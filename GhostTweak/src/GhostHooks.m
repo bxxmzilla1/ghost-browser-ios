@@ -78,7 +78,7 @@ static NSUUID *hook_adID(id self, SEL _cmd) {
         NSUUID *u = [[NSUUID alloc] initWithUUIDString:idfa];
         if (u) return u;
     }
-    return orig_adID ? orig_adID(self, _cmd) : [[NSUUID UUID] init];
+    return orig_adID ? orig_adID(self, _cmd) : [NSUUID UUID];
 }
 
 static NSUUID *(*orig_idfv)(id, SEL);
@@ -88,18 +88,28 @@ static NSUUID *hook_idfv(id self, SEL _cmd) {
         NSUUID *u = [[NSUUID alloc] initWithUUIDString:idfv];
         if (u) return u;
     }
-    return orig_idfv(self, _cmd);
+    return orig_idfv ? orig_idfv(self, _cmd) : nil;
 }
 
 void GhostInstallHooks(void) {
-    GhostSwizzle([NSMutableURLRequest class], @selector(setValue:forHTTPHeaderField:),
-                 (IMP)hook_setValue, (IMP *)&orig_setValue);
+    @try {
+        GhostSwizzle([NSMutableURLRequest class], @selector(setValue:forHTTPHeaderField:),
+                     (IMP)hook_setValue, (IMP *)&orig_setValue);
+    } @catch (NSException *e) { NSLog(@"[GhostTweak] header hook skipped: %@", e); }
 
-    Class asim = NSClassFromString(@"ASIdentifierManager");
-    if (asim) {
-        GhostSwizzle(asim, @selector(advertisingIdentifier), (IMP)hook_adID, (IMP *)&orig_adID);
-    }
-    GhostSwizzle([UIDevice class], @selector(identifierForVendor), (IMP)hook_idfv, (IMP *)&orig_idfv);
+    // IDFA/IDFV spoofing is opt-in: only swizzle when the user actually set a value, so a
+    // normal login-only setup never touches these code paths.
+    GhostTokenStore *t = [GhostTokenStore shared];
+    @try {
+        if (t.idfa.length) {
+            Class asim = NSClassFromString(@"ASIdentifierManager");
+            if (asim) GhostSwizzle(asim, @selector(advertisingIdentifier), (IMP)hook_adID, (IMP *)&orig_adID);
+        }
+        if (t.idfv.length) {
+            GhostSwizzle([UIDevice class], @selector(identifierForVendor), (IMP)hook_idfv, (IMP *)&orig_idfv);
+        }
+    } @catch (NSException *e) { NSLog(@"[GhostTweak] id hook skipped: %@", e); }
 
-    NSLog(@"[GhostTweak] Hooks installed (runtime swizzle)");
+    NSLog(@"[GhostTweak] Hooks installed (headers%@%@)",
+          t.idfa.length ? @" +IDFA" : @"", t.idfv.length ? @" +IDFV" : @"");
 }

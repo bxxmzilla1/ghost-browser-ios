@@ -46,7 +46,12 @@ def inject_dylib(binary: Path, install_name: str) -> None:
             if isinstance(cmd, lief.MachO.DylibCommand) and cmd.name == install_name:
                 print(f"Already loads {install_name}")
                 return False
-        dylib_cmd = lief.MachO.DylibCommand.load_dylib(install_name)
+        # Weak load: if the dylib fails to load or sign, dyld continues instead of killing
+        # the app. Prevents the classic "crash immediately after sideload" from a bad sign.
+        if hasattr(lief.MachO.DylibCommand, "weak_lib"):
+            dylib_cmd = lief.MachO.DylibCommand.weak_lib(install_name)
+        else:
+            dylib_cmd = lief.MachO.DylibCommand.load_dylib(install_name)
         macho.add(dylib_cmd)
         return True
 

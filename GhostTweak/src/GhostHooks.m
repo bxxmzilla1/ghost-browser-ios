@@ -1,4 +1,5 @@
 #import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
 #import <CFNetwork/CFNetwork.h>
 #import <objc/runtime.h>
 #import "GhostTokenStore.h"

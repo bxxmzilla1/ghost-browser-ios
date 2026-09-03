@@ -20,24 +20,28 @@ jobs:
         working-directory: GhostTweak
         run: make clean && make
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GhostTweak-dylib
+          path: GhostTweak/GhostTweak.dylib
+
       - name: Patch Instagram IPA (if base IPA present)
         id: patch
+        continue-on-error: true
         run: |
-          pip3 install lief
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install lief
+          mkdir -p dist
           BASE="IG IPA/Instagram.ipa"
           if [ -f "$BASE" ]; then
             python3 scripts/patch_instagram.py "$BASE" GhostTweak/GhostTweak.dylib "dist/Instagram-Ghost.ipa"
             echo "patched=true" >> "$GITHUB_OUTPUT"
             ls -la dist/Instagram-Ghost.ipa
           else
-            echo "No $BASE in repo — uploading dylib only. Place Instagram.ipa there or patch locally."
+            echo "No $BASE in repo — dylib only. Patch locally with scripts/patch_instagram.py"
             echo "patched=false" >> "$GITHUB_OUTPUT"
           fi
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: GhostTweak-dylib
-          path: GhostTweak/GhostTweak.dylib
 
       - uses: actions/upload-artifact@v4
         if: steps.patch.outputs.patched == 'true'

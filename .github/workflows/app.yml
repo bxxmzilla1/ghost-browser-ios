@@ -1,0 +1,45 @@
+name: Build iOS IPA
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'iOSApp/**'
+      - '.github/workflows/app.yml'
+jobs:
+  build:
+    runs-on: macos-15          # MUST be macos-15 (Xcode 16) — XcodeGen emits
+    defaults:                  # project format 77 which Xcode 15 cannot read.
+      run:
+        working-directory: iOSApp
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: |
+          xcodegen generate
+          echo "--- Generated Info.plist ---"
+          cat Info.plist
+      - name: Build (unsigned)
+        run: |
+          xcodebuild \
+            -project GhostBrowser.xcodeproj \
+            -scheme GhostBrowser \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+      - name: Package unsigned IPA
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/GhostBrowser.app Payload/
+          zip -qr GhostBrowser.ipa Payload
+          ls -la GhostBrowser.ipa
+          echo "--- IPA contents ---"
+          unzip -l GhostBrowser.ipa
+          file Payload/GhostBrowser.app/GhostBrowser
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GhostBrowser-ipa
+          path: iOSApp/GhostBrowser.ipa

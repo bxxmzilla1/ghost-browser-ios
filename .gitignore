@@ -1,0 +1,12 @@
+# CI / build artifacts
+ipa_build/
+dist/
+iOSApp/build/
+iOSApp/Payload/
+iOSApp/*.ipa
+iOSApp/*.xcodeproj
+iOSApp/Info.plist
+
+# OS junk
+.DS_Store
+Thumbs.db

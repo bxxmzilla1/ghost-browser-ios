@@ -8,28 +8,6 @@ struct WebViewContainer: UIViewRepresentable {
     func updateUIView(_ uiView: WKWebView, context: Context) {}
 }
 
-struct TestSite: Identifiable {
-    let name: String
-    let url: String
-    var id: String { url }
-
-    static let all: [TestSite] = [
-        TestSite(name: "BrowserLeaks • JavaScript", url: "https://browserleaks.com/javascript"),
-        TestSite(name: "BrowserLeaks • Canvas", url: "https://browserleaks.com/canvas"),
-        TestSite(name: "BrowserLeaks • WebGL", url: "https://browserleaks.com/webgl"),
-        TestSite(name: "BrowserLeaks • WebRTC", url: "https://browserleaks.com/webrtc"),
-        TestSite(name: "BrowserLeaks • Client Hints", url: "https://browserleaks.com/client-hints"),
-        TestSite(name: "BrowserLeaks • IP", url: "https://browserleaks.com/ip"),
-        TestSite(name: "CreepJS", url: "https://abrahamjuliot.github.io/creepjs/"),
-        TestSite(name: "AmIUnique", url: "https://amiunique.org/fingerprint"),
-        TestSite(name: "EFF Cover Your Tracks", url: "https://coveryourtracks.eff.org/"),
-        TestSite(name: "WhatIsMyBrowser", url: "https://www.whatismybrowser.com/"),
-        TestSite(name: "IPLeak", url: "https://ipleak.net/"),
-        TestSite(name: "Pixelscan", url: "https://pixelscan.net/"),
-        TestSite(name: "EXIF viewer (upload test)", url: "https://jimpl.com/")
-    ]
-}
-
 struct BrowserView: View {
     @EnvironmentObject private var store: ProfileStore
     @StateObject private var model = BrowserModel()
@@ -174,18 +152,6 @@ struct BrowserView: View {
             Spacer()
 
             Menu {
-                Section("Fingerprint test sites") {
-                    ForEach(TestSite.all) { site in
-                        Button(site.name) { model.load(site.url) }
-                    }
-                }
-            } label: {
-                Image(systemName: "testtube.2")
-                    .font(.system(size: 19))
-                    .frame(width: 44, height: 44)
-            }
-
-            Menu {
                 Section("New identity for this session") {
                     Button {
                         store.profile = FingerprintProfile.random(family: .ios)
@@ -196,22 +162,6 @@ struct BrowserView: View {
                     Button {
                         store.profile = FingerprintProfile.random(family: .desktop)
                     } label: { Label("Random Windows PC", systemImage: "desktopcomputer") }
-                    Button {
-                        store.profile = FingerprintProfile.random()
-                    } label: { Label("Surprise me", systemImage: "dice") }
-                }
-                Section("Presets") {
-                    ForEach(FingerprintProfile.presets) { preset in
-                        Button {
-                            store.profile = preset
-                        } label: {
-                            if preset.id == store.profile.id {
-                                Label(preset.name, systemImage: "checkmark")
-                            } else {
-                                Text(preset.name)
-                            }
-                        }
-                    }
                 }
                 Button {
                     var p = store.profile

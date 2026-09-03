@@ -1,3 +1,6 @@
+# Never commit IPAs (GitHub rejects files over 100 MB)
+*.ipa
+
 # CI / build artifacts
 ipa_build/
 dist/

@@ -11,6 +11,8 @@ final class ProfileStore: ObservableObject {
         static let activeID = "ghost.activeSession"
     }
 
+    static let defaultHomeURL = "https://www.google.com"
+
     @Published private(set) var sessions: [BrowserSession] = []
     @Published private(set) var activeID: UUID
 
@@ -59,7 +61,9 @@ final class ProfileStore: ObservableObject {
     init() {
         let defaults = UserDefaults.standard
         privateMode = defaults.object(forKey: Keys.privateMode) as? Bool ?? false
-        homeURL = defaults.string(forKey: Keys.homeURL) ?? "https://duckduckgo.com"
+        // Treat the old built-in default as "unset" so existing installs pick up the new home page.
+        let savedHome = defaults.string(forKey: Keys.homeURL)
+        homeURL = (savedHome == nil || savedHome == "https://duckduckgo.com") ? ProfileStore.defaultHomeURL : savedHome!
 
         var loaded: [BrowserSession] = []
         if let data = try? Data(contentsOf: ProfileStore.fileURL),

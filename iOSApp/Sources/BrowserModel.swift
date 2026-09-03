@@ -139,7 +139,7 @@ final class BrowserModel: NSObject, ObservableObject {
             var allowed = CharacterSet.alphanumerics
             allowed.insert(charactersIn: "-._~")
             let q = text.addingPercentEncoding(withAllowedCharacters: allowed) ?? ""
-            target = URL(string: "https://duckduckgo.com/?q=" + q)
+            target = URL(string: "https://www.google.com/search?q=" + q)
         }
         if let url = target {
             webView.load(spoofedRequest(for: url))

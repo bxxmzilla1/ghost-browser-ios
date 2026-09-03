@@ -42,10 +42,19 @@ enum SpoofScript {
         var canvas: Bool
         var audio: Bool
         var seed: UInt32
+        /// "allow" | "mask" | "block"
+        var webrtc: String
+        var uploadSpoof: Bool
     }
 
     static func source(for p: FingerprintProfile) -> String {
-        var cfg = Config(canvas: p.spoofCanvas, audio: p.spoofAudio, seed: p.seed)
+        let rtc: String
+        switch p.webrtcPolicy {
+        case .allow: rtc = "allow"
+        case .maskLocal: rtc = "mask"
+        case .block: rtc = "block"
+        }
+        var cfg = Config(canvas: p.spoofCanvas, audio: p.spoofAudio, seed: p.seed, webrtc: rtc, uploadSpoof: p.uploadSpoof)
         if p.spoofNavigator {
             cfg.navigator = Config.Navigator(
                 userAgent: p.userAgent,
@@ -127,6 +136,13 @@ enum SpoofScript {
     x = Math.imul(x ^ (x >>> 13), 0xC2B2AE35) >>> 0;
     return (x ^ (x >>> 16)) & 0xFF;
   }
+
+  // Untouched natives, captured before any patching (the upload spoofer draws with these).
+  var RAW = {
+    getImageData: window.CanvasRenderingContext2D && CanvasRenderingContext2D.prototype.getImageData,
+    toBlob: window.HTMLCanvasElement && HTMLCanvasElement.prototype.toBlob,
+    toDataURL: window.HTMLCanvasElement && HTMLCanvasElement.prototype.toDataURL
+  };
 
   // ---------- navigator ----------
   if (cfg.navigator) {
@@ -237,19 +253,59 @@ enum SpoofScript {
       uad.toJSON = function toJSON() { return { brands: brands, mobile: mobile, platform: uaPlatform }; };
       try { Object.defineProperty(uad, Symbol.toStringTag, { value: 'NavigatorUAData', configurable: true }); } catch (e) {}
       defineOn(N, nav, 'userAgentData', uad);
+
+      // window.chrome as a real Chrome exposes it (Sessions X shape).
       if (!window.chrome) {
         try {
+          var t0 = Date.now();
           window.chrome = {
-            app: { isInstalled: false, getDetails: function getDetails() { return null; }, getIsInstalled: function getIsInstalled() { return false; }, runningState: function runningState() { return 'cannot_run'; } },
-            runtime: {},
-            loadTimes: function loadTimes() { return {}; },
-            csi: function csi() { return {}; }
+            app: {
+              isInstalled: false,
+              InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' },
+              RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' },
+              getDetails: function getDetails() { return null; },
+              getIsInstalled: function getIsInstalled() { return false; },
+              runningState: function runningState() { return 'cannot_run'; }
+            },
+            csi: function csi() { return { startE: t0, onloadT: t0 + 300 + (seed % 400), pageT: 500 + (seed % 500), tran: 15 }; },
+            loadTimes: function loadTimes() {
+              var s = t0 / 1000;
+              return { commitLoadTime: s + 0.2, connectionInfo: 'h2', finishDocumentLoadTime: s + 0.6, finishLoadTime: s + 0.9,
+                firstPaintAfterLoadTime: 0, firstPaintTime: s + 0.4, navigationType: 'Other', npnNegotiatedProtocol: 'h2',
+                requestTime: s, startLoadTime: s, wasAlternateProtocolAvailable: false, wasFetchedViaSpdy: true, wasNpnNegotiated: true };
+            },
+            runtime: {
+              connect: function connect() {}, sendMessage: function sendMessage() {},
+              onConnect: { addListener: function addListener() {}, removeListener: function removeListener() {} },
+              onMessage: { addListener: function addListener() {}, removeListener: function removeListener() {} }
+            }
           };
         } catch (e) {}
       }
+
+      // Network Information API (Chromium only)
+      var conn = {};
+      define(conn, 'effectiveType', '4g'); define(conn, 'downlink', mobile ? 7.5 : 10); define(conn, 'rtt', mobile ? 100 : 50);
+      define(conn, 'saveData', false); conn.onchange = null;
+      conn.addEventListener = function addEventListener() {}; conn.removeEventListener = function removeEventListener() {};
+      conn.dispatchEvent = function dispatchEvent() { return true; };
+      try { Object.defineProperty(conn, Symbol.toStringTag, { value: 'NetworkInformation', configurable: true }); } catch (e) {}
+      defineOn(N, nav, 'connection', conn);
+
+      // Battery Status API (Chromium only) — level derived from the seed so it is stable.
+      var battery = { charging: true, chargingTime: 0, dischargingTime: Infinity, level: Math.round((0.55 + (seed % 45) / 100) * 100) / 100,
+        onchargingchange: null, onchargingtimechange: null, ondischargingtimechange: null, onlevelchange: null,
+        addEventListener: function addEventListener() {}, removeEventListener: function removeEventListener() {}, dispatchEvent: function dispatchEvent() { return true; } };
+      try { Object.defineProperty(battery, Symbol.toStringTag, { value: 'BatteryManager', configurable: true }); } catch (e) {}
+      try { N.prototype.getBattery = mask(function getBattery() { return Promise.resolve(battery); }, null); } catch (e) {}
     } else {
       remove(N && N.prototype, 'userAgentData'); remove(nav, 'userAgentData');
+      remove(N && N.prototype, 'connection'); remove(nav, 'connection');
+      remove(N && N.prototype, 'getBattery');
     }
+
+    // WKWebView-only surface that no shipping browser exposes.
+    if (n.kind !== 'safari') { remove(window, 'webkit'); }
 
     // No touch on desktop identities
     if (n.maxTouchPoints === 0) {
@@ -282,6 +338,18 @@ enum SpoofScript {
     define(window, 'screenY', 0);
     define(window, 'screenLeft', 0);
     define(window, 'screenTop', 0);
+    // screen.orientation must agree with the spoofed geometry.
+    try {
+      var orientationType = s.width > s.height ? 'landscape-primary' : 'portrait-primary';
+      if (window.ScreenOrientation && scr.orientation) {
+        defineOn(window.ScreenOrientation, scr.orientation, 'type', orientationType);
+        defineOn(window.ScreenOrientation, scr.orientation, 'angle', 0);
+      } else if (scr && !scr.orientation) {
+        define(scr, 'orientation', { type: orientationType, angle: 0, onchange: null,
+          addEventListener: function addEventListener() {}, removeEventListener: function removeEventListener() {},
+          dispatchEvent: function dispatchEvent() { return true; } });
+      }
+    } catch (e) {}
   }
 
   // ---------- locale / time zone ----------
@@ -516,6 +584,261 @@ enum SpoofScript {
         }, origBFD);
       }
     }
+  }
+
+  // ---------- WebRTC ----------
+  if (cfg.webrtc === 'block') {
+    ['RTCPeerConnection', 'webkitRTCPeerConnection', 'RTCDataChannel', 'RTCDataChannelEvent', 'RTCSessionDescription',
+     'RTCIceCandidate', 'RTCPeerConnectionIceEvent', 'RTCPeerConnectionIceErrorEvent', 'RTCRtpSender', 'RTCRtpReceiver',
+     'RTCRtpTransceiver', 'RTCDtlsTransport', 'RTCIceTransport', 'RTCSctpTransport', 'RTCTrackEvent', 'RTCCertificate',
+     'RTCStatsReport', 'RTCError', 'RTCErrorEvent', 'RTCEncodedVideoFrame', 'RTCEncodedAudioFrame', 'RTCRtpScriptTransform'
+    ].forEach(function (k) { remove(window, k); });
+  } else if (cfg.webrtc === 'mask' && window.RTCPeerConnection) {
+    // Hide LAN candidates: scrub private addresses from local SDP and drop host candidates that leak them.
+    var PRIVATE_IP = /(^|[^\d.])(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|169\.254\.\d{1,3}\.\d{1,3}|fe80:[0-9a-f:]+)/i;
+    var PC = window.RTCPeerConnection.prototype;
+    function scrubSDP(sdp) {
+      return String(sdp).split(/\r?\n/).filter(function (line) {
+        return !(/^a=candidate:/i.test(line) && PRIVATE_IP.test(line));
+      }).join('\r\n').replace(/(c=IN IP4 )(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.)\S+/g, function (m, pre) { return pre + '0.0.0.0'; });
+    }
+    if (PC.setLocalDescription) {
+      var origSLD = PC.setLocalDescription;
+      PC.setLocalDescription = mask(function setLocalDescription(desc) {
+        try {
+          if (desc && typeof desc.sdp === 'string') {
+            var clean = { type: desc.type, sdp: scrubSDP(desc.sdp) };
+            var args = Array.prototype.slice.call(arguments); args[0] = clean;
+            return origSLD.apply(this, args);
+          }
+        } catch (e) {}
+        return origSLD.apply(this, arguments);
+      }, origSLD);
+    }
+    function leaks(ev) { try { return ev && ev.candidate && typeof ev.candidate.candidate === 'string' && PRIVATE_IP.test(ev.candidate.candidate); } catch (e) { return false; } }
+    var origAEL = PC.addEventListener;
+    if (origAEL) {
+      PC.addEventListener = mask(function addEventListener(type, listener) {
+        if (type === 'icecandidate' && typeof listener === 'function') {
+          var args = Array.prototype.slice.call(arguments);
+          args[1] = function (ev) { if (!leaks(ev)) return listener.call(this, ev); };
+          return origAEL.apply(this, args);
+        }
+        return origAEL.apply(this, arguments);
+      }, origAEL);
+    }
+    var iceDesc = Object.getOwnPropertyDescriptor(PC, 'onicecandidate');
+    if (iceDesc && iceDesc.set) {
+      try {
+        Object.defineProperty(PC, 'onicecandidate', {
+          configurable: true, enumerable: iceDesc.enumerable,
+          get: mask(function onicecandidate() { return iceDesc.get.call(this); }, iceDesc.get),
+          set: mask(function onicecandidate(fn) {
+            if (typeof fn !== 'function') return iceDesc.set.call(this, fn);
+            return iceDesc.set.call(this, function (ev) { if (!leaks(ev)) return fn.call(this, ev); });
+          }, iceDesc.set)
+        });
+      } catch (e) {}
+    }
+  }
+
+  // ---------- upload spoofer ----------
+  // Images picked into <input type=file> are re-encoded before the page sees them: random
+  // sub-pixel rotation, crop + rescale, tone jitter, per-pixel noise, fresh JPEG quality and a
+  // rebuilt EXIF block from a random real camera profile. Ported from Sessions X spoofer-media.
+  if (cfg.uploadSpoof && window.File && window.DataTransfer && window.HTMLInputElement && RAW.getImageData && RAW.toBlob) {
+    var IMAGE_MIME = /^image\/(jpeg|jpg|png|webp|bmp|heic|heif|tiff)$/i;
+    var busy = new WeakSet();
+    var justSet = new WeakSet();
+    function urand(lo, hi) { return lo + Math.random() * (hi - lo); }
+    function upick(a) { return a[Math.floor(Math.random() * a.length)]; }
+    function pad2(v) { return (v < 10 ? '0' : '') + v; }
+
+    var CAMERA_PROFILES = [
+      { make: 'Canon', model: 'Canon EOS R5', software: 'Adobe Lightroom Classic 13.0', lens: 'RF 50mm F1.2 L USM', focals: [[50, 1]], fnums: [[12, 10], [14, 10], [18, 10]], res: 300 },
+      { make: 'Canon', model: 'Canon EOS R6 Mark II', software: 'Adobe Lightroom Classic 12.4', lens: 'RF 24-70mm F2.8 L IS USM', focals: [[24, 1], [35, 1], [50, 1], [70, 1]], fnums: [[28, 10], [32, 10], [40, 10]], res: 300 },
+      { make: 'SONY', model: 'ILCE-7M4', software: 'Capture One 23 Pro', lens: 'FE 35mm F1.8', focals: [[35, 1]], fnums: [[18, 10], [22, 10], [28, 10]], res: 240 },
+      { make: 'NIKON CORPORATION', model: 'NIKON Z 6_2', software: 'Adobe Photoshop 25.5 (Windows)', lens: 'NIKKOR Z 50mm f/1.8 S', focals: [[50, 1]], fnums: [[18, 10], [22, 10], [28, 10]], res: 300 },
+      { make: 'FUJIFILM', model: 'X-T5', software: 'Digital Camera X-T5 Ver1.04', lens: 'XF23mmF1.4 R LM WR', focals: [[23, 1]], fnums: [[14, 10], [20, 10], [28, 10]], res: 72 },
+      { make: 'Apple', model: 'iPhone 15 Pro', software: '17.4.1', lens: 'iPhone 15 Pro back triple camera 6.765mm f/1.78', focals: [[6765, 1000]], fnums: [[178, 100]], res: 72 },
+      { make: 'Apple', model: 'iPhone 16 Pro', software: '18.5', lens: 'iPhone 16 Pro back triple camera 6.765mm f/1.78', focals: [[6765, 1000]], fnums: [[178, 100]], res: 72 },
+      { make: 'samsung', model: 'SM-S928B', software: 'S928BXXU2AXC7', lens: 'Samsung Galaxy S24 Ultra Rear Wide Camera', focals: [[64, 10]], fnums: [[17, 10]], res: 72 },
+      { make: 'Google', model: 'Pixel 8 Pro', software: 'HDR+ 1.0.585804401zd', lens: 'Pixel 8 Pro back camera 6.9mm f/1.68', focals: [[69, 10]], fnums: [[168, 100]], res: 72 }
+    ];
+    var ISO_VALUES = [100, 125, 160, 200, 250, 320, 400, 500, 640, 800];
+    var EXPOSURE_DENOMS = [60, 80, 100, 125, 160, 200, 250, 320, 400, 500];
+
+    function randomExifDate() {
+      var y = 2022 + Math.floor(Math.random() * 4), mo = 1 + Math.floor(Math.random() * 12), d = 1 + Math.floor(Math.random() * 28);
+      return y + ':' + pad2(mo) + ':' + pad2(d) + ' ' + pad2(Math.floor(Math.random() * 24)) + ':' + pad2(Math.floor(Math.random() * 60)) + ':' + pad2(Math.floor(Math.random() * 60));
+    }
+
+    // Minimal little-endian TIFF/EXIF writer. types: 2 ASCII, 3 SHORT, 4 LONG, 5 RATIONAL.
+    function encodeValue(e) {
+      var out = [];
+      if (e.type === 2) { var s = String(e.value); for (var i = 0; i < s.length; i++) out.push(s.charCodeAt(i) & 0xFF); out.push(0); return { bytes: out, count: out.length }; }
+      if (e.type === 3) { var vs = [].concat(e.value); vs.forEach(function (v) { out.push(v & 0xFF, (v >> 8) & 0xFF); }); return { bytes: out, count: vs.length }; }
+      if (e.type === 4) { var vl = [].concat(e.value); vl.forEach(function (v) { out.push(v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF, (v >>> 24) & 0xFF); }); return { bytes: out, count: vl.length }; }
+      if (e.type === 5) { var rs = e.value; rs.forEach(function (r) { [r[0], r[1]].forEach(function (v) { out.push(v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF, (v >>> 24) & 0xFF); }); }); return { bytes: out, count: rs.length }; }
+      return { bytes: out, count: 0 };
+    }
+    function buildIFD(entries, ifdOffset) {
+      entries.sort(function (a, b) { return a.tag - b.tag; });
+      var head = [], data = [];
+      var dataStart = ifdOffset + 2 + entries.length * 12 + 4;
+      head.push(entries.length & 0xFF, (entries.length >> 8) & 0xFF);
+      entries.forEach(function (e) {
+        var enc = encodeValue(e);
+        head.push(e.tag & 0xFF, (e.tag >> 8) & 0xFF, e.type & 0xFF, (e.type >> 8) & 0xFF);
+        head.push(enc.count & 0xFF, (enc.count >> 8) & 0xFF, (enc.count >> 16) & 0xFF, (enc.count >>> 24) & 0xFF);
+        if (enc.bytes.length <= 4) {
+          for (var i = 0; i < 4; i++) head.push(enc.bytes[i] || 0);
+        } else {
+          var off = dataStart + data.length;
+          head.push(off & 0xFF, (off >> 8) & 0xFF, (off >> 16) & 0xFF, (off >>> 24) & 0xFF);
+          data = data.concat(enc.bytes);
+          if (data.length % 2) data.push(0);
+        }
+      });
+      head.push(0, 0, 0, 0); // next IFD
+      return head.concat(data);
+    }
+    function buildExifSegment() {
+      var p = upick(CAMERA_PROFILES), dt = randomExifDate();
+      var ifd0 = [
+        { tag: 0x010F, type: 2, value: p.make }, { tag: 0x0110, type: 2, value: p.model }, { tag: 0x0112, type: 3, value: 1 },
+        { tag: 0x011A, type: 5, value: [[p.res, 1]] }, { tag: 0x011B, type: 5, value: [[p.res, 1]] }, { tag: 0x0128, type: 3, value: 2 },
+        { tag: 0x0131, type: 2, value: p.software }, { tag: 0x0132, type: 2, value: dt }, { tag: 0x8769, type: 4, value: 0 }
+      ];
+      var ifd0Bytes = buildIFD(ifd0, 8);
+      var exifOffset = 8 + ifd0Bytes.length;
+      ifd0.forEach(function (e) { if (e.tag === 0x8769) e.value = exifOffset; });
+      ifd0Bytes = buildIFD(ifd0, 8);
+      var exif = [
+        { tag: 0x829A, type: 5, value: [[1, upick(EXPOSURE_DENOMS)]] }, { tag: 0x829D, type: 5, value: [upick(p.fnums)] },
+        { tag: 0x8827, type: 3, value: upick(ISO_VALUES) }, { tag: 0x9003, type: 2, value: dt }, { tag: 0x9004, type: 2, value: dt },
+        { tag: 0x9209, type: 3, value: 0 }, { tag: 0x920A, type: 5, value: [upick(p.focals)] }, { tag: 0xA001, type: 3, value: 1 },
+        { tag: 0xA434, type: 2, value: p.lens }
+      ];
+      var exifBytes = buildIFD(exif, exifOffset);
+      var tiff = [0x49, 0x49, 0x2A, 0x00, 0x08, 0x00, 0x00, 0x00].concat(ifd0Bytes, exifBytes);
+      var app1 = [0x45, 0x78, 0x69, 0x66, 0x00, 0x00].concat(tiff);
+      var len = app1.length + 2;
+      return new Uint8Array([0xFF, 0xE1, (len >> 8) & 0xFF, len & 0xFF].concat(app1));
+    }
+    function injectExif(jpeg) {
+      if (!(jpeg[0] === 0xFF && jpeg[1] === 0xD8)) return jpeg;
+      var seg = buildExifSegment();
+      var out = new Uint8Array(jpeg.length + seg.length);
+      out[0] = 0xFF; out[1] = 0xD8;
+      out.set(seg, 2);
+      out.set(jpeg.subarray(2), 2 + seg.length);
+      return out;
+    }
+
+    function loadImage(file) {
+      return new Promise(function (resolve, reject) {
+        var url = URL.createObjectURL(file);
+        var img = new Image();
+        img.onload = function () { URL.revokeObjectURL(url); resolve(img); };
+        img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('decode')); };
+        img.src = url;
+      });
+    }
+    function toneAndNoise(data) {
+      var gamma = urand(0.94, 1.06), contrast = urand(1.03, 1.05), sat = urand(1.06, 1.1), noiseAmp = urand(5, 9);
+      var gainR = urand(0.985, 1.015), gainB = urand(0.985, 1.015);
+      var lut = new Uint8ClampedArray(256);
+      for (var v = 0; v < 256; v++) {
+        var x = v / 255;
+        x = Math.pow(x, 1 / gamma);
+        x = (x - 0.5) * contrast + 0.5;
+        x = 0.02 + x * 0.96;                       // curves 0/0.02 … 1/0.98
+        lut[v] = Math.round(Math.max(0, Math.min(1, x)) * 255);
+      }
+      var st = (Math.random() * 0x7fffffff) | 0;
+      for (var i = 0; i < data.length; i += 4) {
+        var r = lut[data[i]], g = lut[data[i + 1]], b = lut[data[i + 2]];
+        var l = 0.299 * r + 0.587 * g + 0.114 * b;
+        r = l + (r - l) * sat; g = l + (g - l) * sat; b = l + (b - l) * sat;
+        st = (Math.imul(st, 1103515245) + 12345) | 0;
+        var nz = ((st >>> 16) & 0xFF) / 255 * 2 - 1;
+        data[i] = r * gainR + nz * noiseAmp;
+        st = (Math.imul(st, 1103515245) + 12345) | 0;
+        data[i + 1] = g + (((st >>> 16) & 0xFF) / 255 * 2 - 1) * noiseAmp;
+        st = (Math.imul(st, 1103515245) + 12345) | 0;
+        data[i + 2] = b * gainB + (((st >>> 16) & 0xFF) / 255 * 2 - 1) * noiseAmp;
+      }
+    }
+    function spoofImageFile(file) {
+      return loadImage(file).then(function (img) {
+        var w = img.naturalWidth, h = img.naturalHeight;
+        if (!w || !h) throw new Error('empty');
+        var scale = 1, maxPx = 12000000;
+        if (w * h > maxPx) scale = Math.sqrt(maxPx / (w * h));
+        var cropK = urand(0.975, 0.985), rescale = urand(0.99, 1.005);
+        var dw = w * scale * rescale, dh = h * scale * rescale;
+        var ow = Math.max(1, Math.round(dw * cropK)), oh = Math.max(1, Math.round(dh * cropK));
+        var angle = urand(-0.35, 0.35) * Math.PI / 180;
+        var c = document.createElement('canvas'); c.width = ow; c.height = oh;
+        var ctx = c.getContext('2d');
+        if (!ctx) throw new Error('ctx');
+        ctx.imageSmoothingEnabled = true;
+        try { ctx.imageSmoothingQuality = 'high'; } catch (e) {}
+        ctx.translate(ow / 2, oh / 2);
+        ctx.rotate(angle);
+        ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh);
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        var px = RAW.getImageData.call(ctx, 0, 0, ow, oh);
+        toneAndNoise(px.data);
+        ctx.putImageData(px, 0, 0);
+        return new Promise(function (resolve, reject) {
+          RAW.toBlob.call(c, function (b) { b ? resolve(b) : reject(new Error('encode')); }, 'image/jpeg', urand(0.86, 0.94));
+        });
+      }).then(function (blob) {
+        return blob.arrayBuffer();
+      }).then(function (buf) {
+        var bytes = injectExif(new Uint8Array(buf));
+        var stem = String(file.name || 'IMG').replace(/\.[^.]+$/, '') || 'IMG';
+        var lastModified = Date.now() - Math.floor(urand(15, 540) * 86400000);
+        return new File([bytes], stem + '.jpg', { type: 'image/jpeg', lastModified: lastModified });
+      });
+    }
+    function isFileInput(el) { return el && el.tagName === 'INPUT' && String(el.type).toLowerCase() === 'file'; }
+    function shouldSpoof(f) { return IMAGE_MIME.test(f.type) && !/gif/i.test(f.type); }
+
+    window.addEventListener('input', function (e) {
+      var el = e.target;
+      if (!isFileInput(el) || justSet.has(el)) return;
+      if (busy.has(el)) { e.stopImmediatePropagation(); return; }
+      var files = Array.prototype.slice.call(el.files || []);
+      if (files.some(shouldSpoof)) { e.stopImmediatePropagation(); }
+    }, true);
+
+    window.addEventListener('change', function (e) {
+      var el = e.target;
+      if (!isFileInput(el)) return;
+      if (justSet.has(el)) { justSet.delete(el); return; }
+      if (busy.has(el)) { e.stopImmediatePropagation(); return; }
+      var files = Array.prototype.slice.call(el.files || []);
+      if (!files.some(shouldSpoof)) return;
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      busy.add(el);
+      Promise.all(files.map(function (f) {
+        return shouldSpoof(f) ? spoofImageFile(f).catch(function () { return f; }) : Promise.resolve(f);
+      })).then(function (out) {
+        var dt = new DataTransfer();
+        out.forEach(function (f) { try { dt.items.add(f); } catch (err) {} });
+        try { el.files = dt.files; } catch (err) {}
+      }).catch(function () {}).then(function () {
+        busy.delete(el);
+        justSet.add(el);
+        try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (err) {}
+        try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch (err) {}
+        justSet.delete(el);
+      });
+    }, true);
   }
 })();
 """#

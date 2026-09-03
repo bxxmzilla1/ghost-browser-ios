@@ -7,8 +7,13 @@ struct SettingsView: View {
     let onClearData: () -> Void
 
     @State private var draft: FingerprintProfile = FingerprintProfile.iphoneSafari
+    @State private var proxyText: String = ""
     @State private var loaded = false
     @State private var showClearConfirm = false
+
+    private var parsedProxy: ProxyConfig? { ProxyConfig.parse(proxyText) }
+    private var proxyChanged: Bool { parsedProxy != store.proxy }
+    private var proxyInvalid: Bool { !proxyText.trimmingCharacters(in: .whitespaces).isEmpty && parsedProxy == nil }
 
     private var timeZoneOptions: [String] {
         var list = TimeZones.common
@@ -18,13 +23,15 @@ struct SettingsView: View {
         return list
     }
 
-    private var hasChanges: Bool { draft != store.profile }
+    private var hasChanges: Bool { draft != store.profile || (proxyChanged && !proxyInvalid) }
 
     var body: some View {
         NavigationView {
             Form {
                 identitySection
                 togglesSection
+                proxySection
+                networkSection
                 navigatorSection
                 screenSection
                 localeSection
@@ -40,6 +47,7 @@ struct SettingsView: View {
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Apply") {
+                        if !proxyInvalid { store.proxy = parsedProxy }
                         store.profile = draft
                         dismiss()
                     }
@@ -52,8 +60,61 @@ struct SettingsView: View {
         .onAppear {
             if !loaded {
                 draft = store.profile
+                proxyText = store.proxy?.text ?? ""
                 loaded = true
             }
+        }
+    }
+
+    // MARK: Proxy / network
+
+    private var proxySection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Proxy link").font(.caption).foregroundColor(.secondary)
+                TextField("socks5://host:port:user:pass  ·  host:port", text: $proxyText)
+                    .font(.system(size: 13, design: .monospaced))
+                    .textInputAutocapitalization(.never)
+                    .disableAutocorrection(true)
+                    .keyboardType(.URL)
+            }
+            HStack {
+                Text("Status")
+                Spacer()
+                if proxyInvalid {
+                    Label("Unrecognised format", systemImage: "exclamationmark.triangle").foregroundColor(.orange)
+                } else if let p = parsedProxy {
+                    Text(p.label + (p.user.isEmpty ? "" : " (auth)")).foregroundColor(.secondary)
+                } else {
+                    Text("direct").foregroundColor(.secondary)
+                }
+            }
+            .font(.footnote)
+            if !proxyText.isEmpty {
+                Button("Remove proxy", role: .destructive) { proxyText = "" }
+            }
+        } header: {
+            Text("Proxy (this session)")
+        } footer: {
+            if ProxyConfig.isSupported {
+                Text("Accepted formats: socks5://host:port:user:pass · http://user:pass@host:port · host:port:user:pass · host:port. All traffic of this session goes through it; leave empty for a direct connection.")
+            } else {
+                Text("Per-session proxies need iOS 17 or later (WKWebView proxy support). The value is saved with the session but not applied on this device.")
+            }
+        }
+    }
+
+    private var networkSection: some View {
+        Section {
+            Toggle("Spoof request headers", isOn: $draft.spoofHeaders)
+            Picker("WebRTC", selection: $draft.webrtcPolicy) {
+                ForEach(WebRTCPolicy.allCases) { p in Text(p.label).tag(p) }
+            }
+            Toggle("Spoof uploaded images", isOn: $draft.uploadSpoof)
+        } header: {
+            Text("Network & uploads")
+        } footer: {
+            Text("Headers: Accept-Language and (for Chrome identities) Sec-CH-UA client hints are rewritten on top-level navigations to match the identity. Uploads: images chosen in file pickers are re-encoded with fresh noise, sub-pixel rotation, crop/rescale, tone jitter and a rebuilt EXIF block from a random camera profile — each upload gets a unique signature. Videos pass through untouched.")
         }
     }
 
@@ -62,15 +123,18 @@ struct SettingsView: View {
     private var identitySection: some View {
         Section {
             TextField("Profile name", text: $draft.name)
+            LabeledField("Device model (label / Android model)", text: $draft.deviceName)
             Menu {
-                ForEach(FingerprintProfile.presets) { preset in
-                    Button(preset.name) { draft = preset }
+                Section("Random device") {
+                    Button { draft = FingerprintProfile.random(family: .ios) } label: { Label("iPhone · Safari", systemImage: "iphone") }
+                    Button { draft = FingerprintProfile.random(family: .android) } label: { Label("Android · Chrome", systemImage: "candybarphone") }
+                    Button { draft = FingerprintProfile.random(family: .desktop) } label: { Label("Desktop · Chrome", systemImage: "desktopcomputer") }
+                    Button { draft = FingerprintProfile.random() } label: { Label("Any", systemImage: "dice") }
                 }
-                Divider()
-                Button {
-                    draft = FingerprintProfile.random()
-                } label: {
-                    Label("Random identity", systemImage: "dice")
+                Section("Presets") {
+                    ForEach(FingerprintProfile.presets) { preset in
+                        Button(preset.name) { draft = preset }
+                    }
                 }
             } label: {
                 HStack {
@@ -227,15 +291,25 @@ struct SettingsView: View {
     private var aboutSection: some View {
         Section {
             HStack {
-                Text("Active profile")
+                Text("Session")
                 Spacer()
-                Text(store.profile.name).foregroundColor(.secondary)
+                Text(store.active.name).foregroundColor(.secondary)
+            }
+            HStack {
+                Text("Identity")
+                Spacer()
+                Text(store.profile.deviceLabel).foregroundColor(.secondary)
+            }
+            HStack {
+                Text("Saved cookies")
+                Spacer()
+                Text("\(store.active.cookies.count)").foregroundColor(.secondary)
             }
             Text(store.profile.summary).font(.footnote).foregroundColor(.secondary)
         } header: {
             Text("Status")
         } footer: {
-            Text("Spoofing runs as a document-start script in every frame. Changes apply to the next page load. Your real IP address is not hidden — pair with a VPN if needed.")
+            Text("Spoofing runs as a document-start script in every frame. Changes apply to the next page load. Without a proxy your real IP address is visible.")
         }
     }
 }

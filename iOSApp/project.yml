@@ -26,6 +26,12 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         NSAppTransportSecurity:
           NSAllowsArbitraryLoadsInWebContent: true
+        NSCameraUsageDescription: Websites may request the camera for photo or video capture.
+        NSMicrophoneUsageDescription: Websites may request the microphone for calls or recordings.
+        NSPhotoLibraryUsageDescription: Used when a website asks you to pick a photo to upload.
+        NSMotionUsageDescription: Websites may request device motion data.
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.sideload.ghostbrowser.app

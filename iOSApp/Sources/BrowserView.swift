@@ -17,23 +17,28 @@ struct TestSite: Identifiable {
         TestSite(name: "BrowserLeaks • JavaScript", url: "https://browserleaks.com/javascript"),
         TestSite(name: "BrowserLeaks • Canvas", url: "https://browserleaks.com/canvas"),
         TestSite(name: "BrowserLeaks • WebGL", url: "https://browserleaks.com/webgl"),
-        TestSite(name: "BrowserLeaks • Fonts", url: "https://browserleaks.com/fonts"),
+        TestSite(name: "BrowserLeaks • WebRTC", url: "https://browserleaks.com/webrtc"),
+        TestSite(name: "BrowserLeaks • Client Hints", url: "https://browserleaks.com/client-hints"),
+        TestSite(name: "BrowserLeaks • IP", url: "https://browserleaks.com/ip"),
         TestSite(name: "CreepJS", url: "https://abrahamjuliot.github.io/creepjs/"),
         TestSite(name: "AmIUnique", url: "https://amiunique.org/fingerprint"),
         TestSite(name: "EFF Cover Your Tracks", url: "https://coveryourtracks.eff.org/"),
         TestSite(name: "WhatIsMyBrowser", url: "https://www.whatismybrowser.com/"),
         TestSite(name: "IPLeak", url: "https://ipleak.net/"),
-        TestSite(name: "Pixelscan", url: "https://pixelscan.net/")
+        TestSite(name: "Pixelscan", url: "https://pixelscan.net/"),
+        TestSite(name: "EXIF viewer (upload test)", url: "https://jimpl.com/")
     ]
 }
 
 struct BrowserView: View {
     @EnvironmentObject private var store: ProfileStore
     @StateObject private var model = BrowserModel()
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var urlText = ""
     @State private var showSettings = false
-    @State private var showClearedToast = false
+    @State private var showSessions = false
+    @State private var toast: String?
     @FocusState private var urlFocused: Bool
 
     var body: some View {
@@ -48,8 +53,8 @@ struct BrowserView: View {
                         .tint(.accentColor)
                         .frame(height: 2)
                 }
-                if showClearedToast {
-                    Text("Website data cleared")
+                if let toast = toast {
+                    Text(toast)
                         .font(.footnote.weight(.medium))
                         .padding(.horizontal, 14).padding(.vertical, 8)
                         .background(.thinMaterial, in: Capsule())
@@ -62,22 +67,41 @@ struct BrowserView: View {
         .background(Color(.systemBackground).ignoresSafeArea())
         .onAppear {
             if !model.isConfigured {
-                model.apply(profile: store.profile, privateMode: store.privateMode)
-                model.load(store.homeURL)
+                previousActiveID = store.activeID
+                model.onNavigationFinished = { [weak store, weak model] url in
+                    guard let store = store, let model = model, !store.privateMode else { return }
+                    let id = store.activeID
+                    model.exportCookies { cookies in store.snapshot(cookies: cookies, url: url, for: id) }
+                }
+                let s = store.active
+                model.apply(profile: s.profile, proxy: s.proxy, privateMode: store.privateMode, keepURL: false)
+                model.restoreCookies(s.cookies) { _ in
+                    model.load(s.lastURL.isEmpty ? store.homeURL : s.lastURL)
+                }
             }
         }
-        .onChange(of: store.profile) { newProfile in
-            model.apply(profile: newProfile, privateMode: store.privateMode)
+        .onChange(of: store.revision) { _ in
+            model.apply(profile: store.profile, proxy: store.proxy, privateMode: store.privateMode)
         }
-        .onChange(of: store.privateMode) { isPrivate in
-            model.apply(profile: store.profile, privateMode: isPrivate)
+        .onChange(of: store.activeID) { newID in
+            switchSession(to: newID)
         }
         .onChange(of: model.currentURL) { url in
             if !urlFocused { urlText = displayString(for: url) }
         }
+        .onChange(of: scenePhase) { phase in
+            if phase == .background || phase == .inactive { snapshotNow() }
+        }
         .sheet(isPresented: $showSettings) {
             SettingsView(onClearData: clearData)
                 .environmentObject(store)
+        }
+        .sheet(isPresented: $showSessions) {
+            SessionsView(onSelect: { id in
+                showSessions = false
+                if id != store.activeID { store.setActive(id) }
+            })
+            .environmentObject(store)
         }
     }
 
@@ -85,9 +109,9 @@ struct BrowserView: View {
 
     private var addressBar: some View {
         HStack(spacing: 10) {
-            Image(systemName: store.privateMode ? "eyeglasses" : (model.isSecure ? "lock.fill" : "globe"))
+            Image(systemName: statusIcon)
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(model.isSecure ? .green : .secondary)
+                .foregroundColor(model.proxyActive ? .orange : (model.isSecure ? .green : .secondary))
                 .frame(width: 18)
 
             TextField("Search or enter address", text: $urlText)
@@ -134,6 +158,12 @@ struct BrowserView: View {
         .padding(.vertical, 6)
     }
 
+    private var statusIcon: String {
+        if store.privateMode { return "eyeglasses" }
+        if model.proxyActive { return "shield.lefthalf.filled" }
+        return model.isSecure ? "lock.fill" : "globe"
+    }
+
     // MARK: Bottom bar
 
     private var bottomBar: some View {
@@ -156,6 +186,20 @@ struct BrowserView: View {
             }
 
             Menu {
+                Section("New identity for this session") {
+                    Button {
+                        store.profile = FingerprintProfile.random(family: .ios)
+                    } label: { Label("Random iPhone", systemImage: "iphone") }
+                    Button {
+                        store.profile = FingerprintProfile.random(family: .android)
+                    } label: { Label("Random Android", systemImage: "candybarphone") }
+                    Button {
+                        store.profile = FingerprintProfile.random(family: .desktop)
+                    } label: { Label("Random Windows PC", systemImage: "desktopcomputer") }
+                    Button {
+                        store.profile = FingerprintProfile.random()
+                    } label: { Label("Surprise me", systemImage: "dice") }
+                }
                 Section("Presets") {
                     ForEach(FingerprintProfile.presets) { preset in
                         Button {
@@ -168,11 +212,6 @@ struct BrowserView: View {
                             }
                         }
                     }
-                }
-                Button {
-                    store.profile = FingerprintProfile.random()
-                } label: {
-                    Label("Randomize identity", systemImage: "dice")
                 }
                 Button {
                     var p = store.profile
@@ -191,13 +230,28 @@ struct BrowserView: View {
                     Label("Clear website data", systemImage: "trash")
                 }
             } label: {
+                Image(systemName: "person.crop.circle.badge.questionmark")
+                    .font(.system(size: 19))
+                    .frame(width: 44, height: 44)
+            }
+
+            Button {
+                snapshotNow()
+                showSessions = true
+            } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: "person.crop.circle.badge.questionmark")
-                        .font(.system(size: 19))
-                    Text(store.profile.name)
-                        .font(.footnote.weight(.medium))
-                        .lineLimit(1)
-                        .frame(maxWidth: 140)
+                    Image(systemName: "square.stack.3d.up.fill")
+                        .font(.system(size: 17))
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(store.active.name)
+                            .font(.footnote.weight(.semibold))
+                            .lineLimit(1)
+                        Text(store.active.proxy == nil ? store.active.deviceLabel : store.active.proxyLabel)
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+                    .frame(maxWidth: 130, alignment: .leading)
                 }
                 .frame(height: 44)
                 .padding(.horizontal, 6)
@@ -220,6 +274,47 @@ struct BrowserView: View {
         .disabled(!enabled)
     }
 
+    // MARK: Session handling
+
+    /// Save the outgoing session's cookies, wipe the shared store, restore the incoming
+    /// session's cookies, then rebuild with its fingerprint + proxy and open its last URL.
+    private func switchSession(to id: UUID) {
+        let outgoingURL = model.currentURL
+        let outgoingID = previousActiveID ?? id
+        previousActiveID = id
+        guard let target = store.sessions.first(where: { $0.id == id }) else { return }
+
+        let finish = {
+            model.clearWebsiteData {
+                model.apply(profile: target.profile, proxy: target.proxy, privateMode: store.privateMode, keepURL: false)
+                model.restoreCookies(target.cookies) { count in
+                    model.load(target.lastURL.isEmpty ? store.homeURL : target.lastURL)
+                    showToast(count > 0 ? "Switched to \(target.name) • \(count) cookies restored" : "Switched to \(target.name)")
+                }
+            }
+        }
+        if store.privateMode || outgoingID == id {
+            finish()
+        } else {
+            model.exportCookies { cookies in
+                store.snapshot(cookies: cookies, url: outgoingURL, for: outgoingID)
+                finish()
+            }
+        }
+    }
+
+    @State private var previousActiveID: UUID?
+
+    private func snapshotNow() {
+        guard !store.privateMode, model.isConfigured else { return }
+        let id = store.activeID
+        let url = model.currentURL
+        model.exportCookies { cookies in
+            store.snapshot(cookies: cookies, url: url, for: id)
+            store.saveNow()
+        }
+    }
+
     // MARK: Helpers
 
     private func displayString(for url: URL?) -> String {
@@ -230,11 +325,16 @@ struct BrowserView: View {
 
     private func clearData() {
         model.clearWebsiteData {
-            model.apply(profile: store.profile, privateMode: store.privateMode)
-            withAnimation { showClearedToast = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
-                withAnimation { showClearedToast = false }
-            }
+            store.snapshot(cookies: [], url: nil, for: store.activeID)
+            model.apply(profile: store.profile, proxy: store.proxy, privateMode: store.privateMode)
+            showToast("Website data cleared")
+        }
+    }
+
+    private func showToast(_ text: String) {
+        withAnimation { toast = text }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            withAnimation { if toast == text { toast = nil } }
         }
     }
 }

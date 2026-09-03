@@ -17,11 +17,53 @@ from pathlib import Path
 try:
     import lief
 except ImportError:
-    print("Install lief: pip install lief", file=sys.stderr)
+    print("Install lief: python -m pip install lief", file=sys.stderr)
     sys.exit(1)
 
 DYLIB_NAME = "GhostTweak.dylib"
 LOAD_PATH = f"@executable_path/Frameworks/{DYLIB_NAME}"
+
+
+def macho_slice(binary_path: Path):
+    """Return the arm64 Mach-O slice (handles thin + fat binaries)."""
+    parsed = lief.MachO.parse(str(binary_path))
+    if parsed is None:
+        raise SystemExit(f"Cannot parse Mach-O: {binary_path}")
+    if isinstance(parsed, lief.MachO.FatBinary):
+        if parsed.size == 0:
+            raise SystemExit(f"No slices in fat binary: {binary_path}")
+        return parsed.at(0)
+    return parsed
+
+
+def inject_dylib(binary: Path, install_name: str) -> None:
+    fat = lief.MachO.parse(str(binary))
+    if fat is None:
+        raise SystemExit(f"Cannot parse Mach-O: {binary}")
+
+    def patch_slice(macho) -> bool:
+        for cmd in macho.commands:
+            if isinstance(cmd, lief.MachO.DylibCommand) and cmd.name == install_name:
+                print(f"Already loads {install_name}")
+                return False
+        dylib_cmd = lief.MachO.DylibCommand.load_dylib(install_name)
+        macho.add(dylib_cmd)
+        return True
+
+    if isinstance(fat, lief.MachO.FatBinary):
+        changed = False
+        for i in range(fat.size):
+            if patch_slice(fat.at(i)):
+                changed = True
+        if not changed:
+            return
+        fat.write(str(binary))
+    else:
+        if not patch_slice(fat):
+            return
+        fat.write(str(binary))
+
+    print(f"Injected LC_LOAD_DYLIB: {install_name}")
 
 
 def find_app_dir(root: Path) -> Path:
@@ -32,25 +74,6 @@ def find_app_dir(root: Path) -> Path:
     return apps[0]
 
 
-def inject_dylib(binary: Path, install_name: str) -> None:
-    parsed = lief.parse(str(binary))
-    if parsed is None:
-        raise SystemExit(f"Cannot parse Mach-O: {binary}")
-
-    for cmd in parsed.commands:
-        if cmd.command == lief.MachO.LoadCommand.TYPE.DYLIB and getattr(cmd, "name", None) == install_name:
-            print(f"Already loads {install_name}")
-            return
-
-    dylib_cmd = lief.MachO.DylibCommand()
-    dylib_cmd.name = install_name
-    dylib_cmd.current_version = [1, 0, 0]
-    dylib_cmd.compatibility_version = [1, 0, 0]
-    parsed.add(dylib_cmd)
-    parsed.write(str(binary))
-    print(f"Injected LC_LOAD_DYLIB: {install_name}")
-
-
 def patch_ipa(ipa_in: Path, dylib: Path, ipa_out: Path) -> None:
     if not ipa_in.is_file():
         raise SystemExit(f"Missing IPA: {ipa_in}")
@@ -59,7 +82,7 @@ def patch_ipa(ipa_in: Path, dylib: Path, ipa_out: Path) -> None:
 
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp)
-        print(f"Extracting {ipa_in.name}…")
+        print(f"Extracting {ipa_in.name}...")
         with zipfile.ZipFile(ipa_in, "r") as zf:
             zf.extractall(work)
 
@@ -69,12 +92,11 @@ def patch_ipa(ipa_in: Path, dylib: Path, ipa_out: Path) -> None:
 
         dest_dylib = frameworks / DYLIB_NAME
         shutil.copy2(dylib, dest_dylib)
-        print(f"Copied {DYLIB_NAME} → Frameworks/")
+        print(f"Copied {DYLIB_NAME} -> Frameworks/")
 
-        exe_name = app.stem  # Instagram.app → Instagram
+        exe_name = app.stem
         binary = app / exe_name
         if not binary.is_file():
-            plists = list(app.glob("Info.plist"))
             raise SystemExit(f"Main binary not found: {binary}")
 
         inject_dylib(binary, LOAD_PATH)
@@ -82,7 +104,7 @@ def patch_ipa(ipa_in: Path, dylib: Path, ipa_out: Path) -> None:
         ipa_out.parent.mkdir(parents=True, exist_ok=True)
         if ipa_out.exists():
             ipa_out.unlink()
-        print(f"Packaging {ipa_out.name}…")
+        print(f"Packaging {ipa_out.name}...")
         with zipfile.ZipFile(ipa_out, "w", zipfile.ZIP_DEFLATED) as zf:
             for path in sorted(work.rglob("*")):
                 if path.is_file():

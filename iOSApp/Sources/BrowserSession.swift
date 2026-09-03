@@ -72,13 +72,6 @@ struct BrowserSession: Codable, Equatable, Identifiable {
     var lastURL: String = ""
     var createdAt: Date = Date()
     var updatedAt: Date = Date()
-    /// Optional so sessions saved before this field existed still decode.
-    var tokens: DeviceTokens?
-
-    var deviceTokens: DeviceTokens {
-        get { tokens ?? DeviceTokens() }
-        set { tokens = newValue }
-    }
 
     var deviceLabel: String { profile.deviceLabel }
     var proxyLabel: String { proxy?.label ?? "direct" }
@@ -185,7 +178,6 @@ struct SessionsXPayload: Codable {
     struct Ghost: Codable {
         var profile: FingerprintProfile
         var proxy: ProxyConfig?
-        var tokens: DeviceTokens?
     }
 
     var version: Int?
@@ -198,8 +190,6 @@ struct SessionsXPayload: Codable {
     var spoof: Spoof?
     var cookies: [CookieRecord]?
     var twofaSecret: String?
-    /// Device / account tokens in "Key: value" block form (human readable, tool friendly).
-    var deviceTokens: String?
     /// Lossless extra for round-tripping GhostBrowser profiles (ignored by Sessions X).
     var ghost: Ghost?
 
@@ -215,8 +205,7 @@ struct SessionsXPayload: Codable {
                       fingerprint: SessionsXFingerprint(profile: s.profile))
         cookies = s.cookies
         twofaSecret = ""
-        deviceTokens = s.tokens.flatMap { $0.isEmpty ? nil : $0.textBlock }
-        ghost = Ghost(profile: s.profile, proxy: s.proxy, tokens: s.tokens)
+        ghost = Ghost(profile: s.profile, proxy: s.proxy)
     }
 
     func toSession() -> BrowserSession {
@@ -233,11 +222,6 @@ struct SessionsXPayload: Codable {
         s.proxy = ghost?.proxy ?? proxy.flatMap { ProxyConfig.parse($0) }
         s.cookies = cookies ?? []
         s.lastURL = url ?? ""
-        if let t = ghost?.tokens {
-            s.tokens = t
-        } else if let block = deviceTokens, !block.isEmpty {
-            s.tokens = DeviceTokens.parse(block)
-        }
         return s
     }
 

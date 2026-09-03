@@ -56,15 +56,6 @@ final class ProfileStore: ObservableObject {
         }
     }
 
-    var tokens: DeviceTokens {
-        get { active.deviceTokens }
-        set {
-            guard newValue != active.deviceTokens else { return }
-            mutateActive { $0.deviceTokens = newValue }
-            revision += 1
-        }
-    }
-
     // MARK: Init / persistence
 
     init() {

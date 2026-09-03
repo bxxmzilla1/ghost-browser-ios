@@ -32,6 +32,9 @@ targets:
         NSMotionUsageDescription: Websites may request device motion data.
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
+        LSApplicationQueriesSchemes:
+          - instagram
+          - instagram-stories
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.sideload.ghostbrowser.app

@@ -8,6 +8,7 @@ struct SettingsView: View {
 
     @State private var draft: FingerprintProfile = FingerprintProfile.iphoneSafari
     @State private var proxyText: String = ""
+    @State private var tokensDraft: DeviceTokens = DeviceTokens()
     @State private var loaded = false
     @State private var showClearConfirm = false
 
@@ -23,7 +24,9 @@ struct SettingsView: View {
         return list
     }
 
-    private var hasChanges: Bool { draft != store.profile || (proxyChanged && !proxyInvalid) }
+    private var hasChanges: Bool {
+        draft != store.profile || (proxyChanged && !proxyInvalid) || tokensDraft != store.tokens
+    }
 
     var body: some View {
         NavigationView {
@@ -31,6 +34,7 @@ struct SettingsView: View {
                 identitySection
                 togglesSection
                 proxySection
+                tokensSection
                 networkSection
                 navigatorSection
                 screenSection
@@ -48,6 +52,7 @@ struct SettingsView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Apply") {
                         if !proxyInvalid { store.proxy = parsedProxy }
+                        store.tokens = tokensDraft
                         store.profile = draft
                         dismiss()
                     }
@@ -61,9 +66,37 @@ struct SettingsView: View {
             if !loaded {
                 draft = store.profile
                 proxyText = store.proxy?.text ?? ""
+                tokensDraft = store.tokens
                 loaded = true
             }
         }
+    }
+
+    // MARK: Device tokens
+
+    private var tokensSection: some View {
+        Section {
+            NavigationLink {
+                DeviceTokensView(tokens: $tokensDraft)
+            } label: {
+                HStack {
+                    Label("Device tokens", systemImage: "key.horizontal")
+                    Spacer()
+                    Text(tokensSummary).foregroundColor(.secondary).font(.footnote)
+                }
+            }
+        } header: {
+            Text("Device tokens (this session)")
+        } footer: {
+            Text("Android ID, IDFV/IDFA, Authorization, IG-U-DS-USER-ID, X-MID, X-IG-WWW-Claim… Paste the block from your account tool; header tokens are sent to the configured hosts.")
+        }
+    }
+
+    private var tokensSummary: String {
+        let filled = DeviceTokens.Field.allCases.filter { !tokensDraft[$0].trimmingCharacters(in: .whitespaces).isEmpty }.count
+        if filled == 0 { return "none" }
+        let headers = tokensDraft.headers.count
+        return "\(filled) set" + (headers > 0 ? " · \(headers) headers" : "")
     }
 
     // MARK: Proxy / network

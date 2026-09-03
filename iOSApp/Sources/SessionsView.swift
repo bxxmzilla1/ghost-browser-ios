@@ -117,6 +117,9 @@ struct SessionsView: View {
                     HStack(spacing: 8) {
                         Label(session.proxy == nil ? "direct" : session.proxyLabel, systemImage: "network")
                         Label("\(session.cookies.count)", systemImage: "circle.grid.2x2")
+                        if let t = session.tokens, !t.isEmpty {
+                            Label("tokens", systemImage: "key.horizontal")
+                        }
                         if !session.lastURL.isEmpty, let host = URL(string: session.lastURL)?.host {
                             Label(host, systemImage: "globe")
                         }

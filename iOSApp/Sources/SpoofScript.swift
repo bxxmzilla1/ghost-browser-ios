@@ -45,16 +45,21 @@ enum SpoofScript {
         /// "allow" | "mask" | "block"
         var webrtc: String
         var uploadSpoof: Bool
+        /// Header-type device tokens attached to fetch/XHR requests for `tokenHosts`.
+        var tokenHeaders: [String: String]
+        var tokenHosts: [String]
     }
 
-    static func source(for p: FingerprintProfile) -> String {
+    static func source(for p: FingerprintProfile, tokens: DeviceTokens = DeviceTokens()) -> String {
         let rtc: String
         switch p.webrtcPolicy {
         case .allow: rtc = "allow"
         case .maskLocal: rtc = "mask"
         case .block: rtc = "block"
         }
-        var cfg = Config(canvas: p.spoofCanvas, audio: p.spoofAudio, seed: p.seed, webrtc: rtc, uploadSpoof: p.uploadSpoof)
+        let headers = tokens.headers
+        var cfg = Config(canvas: p.spoofCanvas, audio: p.spoofAudio, seed: p.seed, webrtc: rtc, uploadSpoof: p.uploadSpoof,
+                         tokenHeaders: headers, tokenHosts: headers.isEmpty ? [] : tokens.normalizedHosts)
         if p.spoofNavigator {
             cfg.navigator = Config.Navigator(
                 userAgent: p.userAgent,
@@ -583,6 +588,66 @@ enum SpoofScript {
           return r;
         }, origBFD);
       }
+    }
+  }
+
+  // ---------- device token headers (fetch / XHR) ----------
+  // Top-level navigations get these natively; in-page API calls (which is what Instagram's web
+  // client actually uses for X-MID / X-IG-WWW-Claim / IG-U-DS-USER-ID) are patched here.
+  var tokenNames = Object.keys(cfg.tokenHeaders || {});
+  if (tokenNames.length && (cfg.tokenHosts || []).length) {
+    var tokenHosts = cfg.tokenHosts.map(function (h) { return String(h).toLowerCase(); });
+    function tokenHost(host) {
+      host = String(host || '').toLowerCase();
+      if (!host) return false;
+      for (var i = 0; i < tokenHosts.length; i++) {
+        var h = tokenHosts[i];
+        if (host === h || host.slice(-(h.length + 1)) === '.' + h) return true;
+      }
+      return false;
+    }
+    function tokenURLMatches(input) {
+      try {
+        var u = new URL(typeof input === 'string' ? input : (input && input.url) || String(input), location.href);
+        return (u.protocol === 'https:' || u.protocol === 'http:') && tokenHost(u.hostname);
+      } catch (e) { return false; }
+    }
+    if (window.fetch) {
+      var origFetch = window.fetch;
+      window.fetch = mask(function fetch(input, init) {
+        try {
+          if (tokenURLMatches(input)) {
+            var headers = new Headers((init && init.headers) || (input && input.headers) || undefined);
+            tokenNames.forEach(function (k) { if (!headers.has(k)) headers.set(k, cfg.tokenHeaders[k]); });
+            init = Object.assign({}, init || {}, { headers: headers });
+          }
+        } catch (e) {}
+        return origFetch.call(this, input, init);
+      }, origFetch);
+    }
+    if (window.XMLHttpRequest) {
+      var XP = XMLHttpRequest.prototype;
+      var origOpen = XP.open, origSend = XP.send, origSetHeader = XP.setRequestHeader;
+      var xhrState = new WeakMap();
+      XP.open = mask(function open(method, url) {
+        try { xhrState.set(this, { match: tokenURLMatches(url), set: {} }); } catch (e) {}
+        return origOpen.apply(this, arguments);
+      }, origOpen);
+      XP.setRequestHeader = mask(function setRequestHeader(name, value) {
+        try { var st = xhrState.get(this); if (st) st.set[String(name).toLowerCase()] = true; } catch (e) {}
+        return origSetHeader.apply(this, arguments);
+      }, origSetHeader);
+      XP.send = mask(function send() {
+        try {
+          var st = xhrState.get(this);
+          if (st && st.match) {
+            tokenNames.forEach(function (k) {
+              if (!st.set[k.toLowerCase()]) { try { origSetHeader.call(this, k, cfg.tokenHeaders[k]); } catch (e) {} }
+            }, this);
+          }
+        } catch (e) {}
+        return origSend.apply(this, arguments);
+      }, origSend);
     }
   }
 

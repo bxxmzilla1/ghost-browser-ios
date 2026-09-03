@@ -52,14 +52,14 @@ struct BrowserView: View {
                     model.exportCookies { cookies in store.snapshot(cookies: cookies, url: url, for: id) }
                 }
                 let s = store.active
-                model.apply(profile: s.profile, proxy: s.proxy, privateMode: store.privateMode, keepURL: false)
+                model.apply(profile: s.profile, proxy: s.proxy, tokens: s.deviceTokens, privateMode: store.privateMode, keepURL: false)
                 model.restoreCookies(s.cookies) { _ in
                     model.load(s.lastURL.isEmpty ? store.homeURL : s.lastURL)
                 }
             }
         }
         .onChange(of: store.revision) { _ in
-            model.apply(profile: store.profile, proxy: store.proxy, privateMode: store.privateMode)
+            model.apply(profile: store.profile, proxy: store.proxy, tokens: store.tokens, privateMode: store.privateMode)
         }
         .onChange(of: store.activeID) { newID in
             switchSession(to: newID)
@@ -236,7 +236,7 @@ struct BrowserView: View {
 
         let finish = {
             model.clearWebsiteData {
-                model.apply(profile: target.profile, proxy: target.proxy, privateMode: store.privateMode, keepURL: false)
+                model.apply(profile: target.profile, proxy: target.proxy, tokens: target.deviceTokens, privateMode: store.privateMode, keepURL: false)
                 model.restoreCookies(target.cookies) { count in
                     model.load(target.lastURL.isEmpty ? store.homeURL : target.lastURL)
                     showToast(count > 0 ? "Switched to \(target.name) • \(count) cookies restored" : "Switched to \(target.name)")
@@ -276,7 +276,7 @@ struct BrowserView: View {
     private func clearData() {
         model.clearWebsiteData {
             store.snapshot(cookies: [], url: nil, for: store.activeID)
-            model.apply(profile: store.profile, proxy: store.proxy, privateMode: store.privateMode)
+            model.apply(profile: store.profile, proxy: store.proxy, tokens: store.tokens, privateMode: store.privateMode)
             showToast("Website data cleared")
         }
     }

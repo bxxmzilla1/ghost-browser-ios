@@ -24,6 +24,7 @@ final class BrowserModel: NSObject, ObservableObject {
 
     private(set) var isConfigured = false
     private(set) var currentProfile: FingerprintProfile?
+    private(set) var currentTokens = DeviceTokens()
     private var observers: [NSKeyValueObservation] = []
 
     override init() {
@@ -33,7 +34,8 @@ final class BrowserModel: NSObject, ObservableObject {
 
     // MARK: Configuration
 
-    func apply(profile: FingerprintProfile, proxy: ProxyConfig?, privateMode: Bool, keepURL: Bool = true) {
+    func apply(profile: FingerprintProfile, proxy: ProxyConfig?, tokens: DeviceTokens = DeviceTokens(),
+               privateMode: Bool, keepURL: Bool = true) {
         let previousURL = (isConfigured && keepURL) ? webView.url : nil
 
         let config = WKWebViewConfiguration()
@@ -47,7 +49,7 @@ final class BrowserModel: NSObject, ObservableObject {
 
         let controller = WKUserContentController()
         let script = WKUserScript(
-            source: SpoofScript.source(for: profile),
+            source: SpoofScript.source(for: profile, tokens: tokens),
             injectionTime: .atDocumentStart,
             forMainFrameOnly: false,
             in: .page
@@ -66,6 +68,7 @@ final class BrowserModel: NSObject, ObservableObject {
         observers.removeAll()
         webView = newView
         currentProfile = profile
+        currentTokens = tokens
         observe(newView)
         isConfigured = true
         generation += 1
@@ -106,21 +109,29 @@ final class BrowserModel: NSObject, ObservableObject {
 
     // MARK: Navigation
 
-    /// Builds a request carrying the identity's Accept-Language / Sec-CH-UA headers.
+    /// Headers a top-level request to `url` should carry: identity headers (Accept-Language /
+    /// Sec-CH-UA) plus the session's device tokens when the host is in the tokens' scope.
+    private func wantedHeaders(for url: URL) -> [String: String] {
+        var h: [String: String] = [:]
+        if let p = currentProfile, p.spoofNavigator, p.spoofHeaders {
+            h.merge(p.spoofedRequestHeaders) { _, new in new }
+        }
+        if currentTokens.matches(host: url.host) {
+            h.merge(currentTokens.headers) { _, new in new }
+        }
+        return h
+    }
+
     private func spoofedRequest(for url: URL) -> URLRequest {
         var req = URLRequest(url: url)
-        if let p = currentProfile, p.spoofNavigator, p.spoofHeaders {
-            for (k, v) in p.spoofedRequestHeaders { req.setValue(v, forHTTPHeaderField: k) }
-        }
+        for (k, v) in wantedHeaders(for: url) { req.setValue(v, forHTTPHeaderField: k) }
         return req
     }
 
     private func needsHeaderRewrite(_ request: URLRequest) -> Bool {
-        guard let p = currentProfile, p.spoofNavigator, p.spoofHeaders,
-              (request.httpMethod ?? "GET").uppercased() == "GET",
-              let scheme = request.url?.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return false }
-        let want = p.spoofedRequestHeaders
-        for (k, v) in want where request.value(forHTTPHeaderField: k) != v { return true }
+        guard (request.httpMethod ?? "GET").uppercased() == "GET",
+              let url = request.url, let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return false }
+        for (k, v) in wantedHeaders(for: url) where request.value(forHTTPHeaderField: k) != v { return true }
         return false
     }
 

@@ -101,7 +101,7 @@ struct InstagramBridgeView: View {
         } header: {
             Text("Export web login → native tokens")
         } footer: {
-            Text("Authorization is rebuilt from the web sessionid + ds_user_id in the mobile \"Bearer IGT:2:…\" form the native app uses. IDFA/IDFV/Android ID are native-only and show \"No data available\".")
+            Text("Copy the token block, then in sideloaded Instagram (GhostTweak): 3-finger double-tap → paste → Import. Authorization is rebuilt as Bearer IGT:2:… from sessionid + ds_user_id.")
         }
     }
 

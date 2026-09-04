@@ -115,6 +115,21 @@ static NSString *hook_devName(id self, SEL _cmd) {
 // Instagram reads the hardware string ("iPhone16,1") through the C sysctl/uname APIs, not
 // Obj-C, so those are interposed here. Calls for hw.machine/hw.model are answered from the
 // spoofed profile; everything else is forwarded to the real implementation via RTLD_NEXT.
+//
+// CRITICAL: these run on extremely hot/early paths (sysctlbyname is called from inside libSystem
+// and NSUserDefaults during startup). They must be PURE C — no Objective-C, no locks. Touching
+// [GhostTokenStore shared] here re-enters its dispatch_once and deadlocks. So the spoofed model is
+// copied into a plain C buffer once (GhostSetSpoofModel) and the hooks only read that buffer.
+
+static char gGhostModel[64];
+static volatile int32_t gGhostModelSet = 0;
+
+// Called from Obj-C (init / randomize) to publish the spoofed model to the C hooks.
+void GhostSetSpoofModel(const char *model) {
+    if (!model || !*model) { gGhostModelSet = 0; return; }
+    strlcpy(gGhostModel, model, sizeof(gGhostModel));
+    gGhostModelSet = 1;
+}
 
 static BOOL GhostSpoofSysctlName(const char *name) {
     return name && (strcmp(name, "hw.machine") == 0 || strcmp(name, "hw.model") == 0);
@@ -135,9 +150,8 @@ static int GhostFillBuf(const char *val, void *oldp, size_t *oldlenp) {
 int ghost_sysctlbyname(const char *name, void *oldp, size_t *oldlenp, void *newp, size_t newlen) {
     static int (*real)(const char *, void *, size_t *, void *, size_t);
     if (!real) real = (int (*)(const char *, void *, size_t *, void *, size_t))dlsym(RTLD_NEXT, "sysctlbyname");
-    if (GhostSpoofSysctlName(name)) {
-        NSString *model = [GhostTokenStore shared].deviceModel;
-        if (model.length) return GhostFillBuf(model.UTF8String, oldp, oldlenp);
+    if (gGhostModelSet && GhostSpoofSysctlName(name)) {
+        return GhostFillBuf(gGhostModel, oldp, oldlenp);
     }
     return real(name, oldp, oldlenp, newp, newlen);
 }
@@ -146,9 +160,8 @@ int ghost_uname(struct utsname *buf) {
     static int (*real)(struct utsname *);
     if (!real) real = (int (*)(struct utsname *))dlsym(RTLD_NEXT, "uname");
     int r = real(buf);
-    NSString *model = [GhostTokenStore shared].deviceModel;
-    if (r == 0 && buf && model.length) {
-        strlcpy(buf->machine, model.UTF8String, sizeof(buf->machine));
+    if (r == 0 && buf && gGhostModelSet) {
+        strlcpy(buf->machine, gGhostModel, sizeof(buf->machine));
     }
     return r;
 }
@@ -172,6 +185,10 @@ void GhostInstallHooks(void) {
     GhostSwizzle([UIDevice class], @selector(identifierForVendor), (IMP)hook_idfv, (IMP *)&orig_idfv);
     GhostSwizzle([UIDevice class], @selector(systemVersion), (IMP)hook_sysVersion, (IMP *)&orig_sysVersion);
     GhostSwizzle([UIDevice class], @selector(name), (IMP)hook_devName, (IMP *)&orig_devName);
+
+    // Publish the spoofed hardware string to the pure-C sysctl/uname hooks (see note above).
+    NSString *model = [GhostTokenStore shared].deviceModel;
+    GhostSetSpoofModel(model.length ? model.UTF8String : NULL);
 
     NSLog(@"[GhostTweak] Hooks installed (device spoof active: %@)",
           [GhostTokenStore shared].deviceSummary);

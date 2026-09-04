@@ -12,7 +12,7 @@ CFLAGS := -arch arm64 \
 	-install_name @executable_path/Frameworks/$(OUT) \
 	-Wno-deprecated-declarations
 
-LDFLAGS := -framework Foundation -framework UIKit -framework CFNetwork
+LDFLAGS := -framework Foundation -framework UIKit -framework CFNetwork -framework WebKit
 
 SRCS := src/GhostTweak.m src/GhostTokenStore.m src/GhostHooks.m src/GhostSettings.m
 

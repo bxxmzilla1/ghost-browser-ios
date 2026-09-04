@@ -1,6 +1,63 @@
 #import <UIKit/UIKit.h>
+#import <WebKit/WebKit.h>
 #import <objc/runtime.h>
 #import "GhostTokenStore.h"
+
+#pragma mark - App data wipe (Blaze-style "Delete app data")
+
+/// Resets the app's data container to a fresh-install state: cookies, URL cache, credentials,
+/// WKWebView storage, the app's own NSUserDefaults, and everything under the container's
+/// Documents/Library/tmp. The tweak's own token settings are re-saved afterwards so the panel
+/// keeps its configuration across the wipe (like Blaze keeping its settings). The .app bundle and
+/// the injected dylib live outside this container, so the tweak itself survives.
+static void GhostWipeAppData(void) {
+    NSFileManager *fm = [NSFileManager defaultManager];
+
+    // Cookies (covers sessionid / ds_user_id / csrftoken → logged out).
+    NSHTTPCookieStorage *cs = [NSHTTPCookieStorage sharedHTTPCookieStorage];
+    for (NSHTTPCookie *c in [cs.cookies copy]) { [cs deleteCookie:c]; }
+
+    // HTTP cache + saved credentials.
+    [[NSURLCache sharedURLCache] removeAllCachedResponses];
+    NSURLCredentialStorage *cred = [NSURLCredentialStorage sharedCredentialStorage];
+    NSDictionary *all = [cred.allCredentials copy];
+    for (NSURLProtectionSpace *space in all) {
+        NSDictionary *forSpace = all[space];
+        for (NSString *user in forSpace) { [cred removeCredential:forSpace[user] forProtectionSpace:space]; }
+    }
+
+    // The app's own preferences.
+    NSString *bundleID = [[NSBundle mainBundle] bundleIdentifier];
+    if (bundleID.length) { [[NSUserDefaults standardUserDefaults] removePersistentDomainForName:bundleID]; }
+
+    // WKWebView storage (async, best effort).
+    NSSet *types = [WKWebsiteDataStore allWebsiteDataTypes];
+    [[WKWebsiteDataStore defaultDataStore] removeDataOfTypes:types
+                                              modifiedSince:[NSDate dateWithTimeIntervalSince1970:0]
+                                          completionHandler:^{}];
+
+    // Container directories — delete everything inside the standard folders.
+    NSString *home = NSHomeDirectory();
+    for (NSString *sub in @[@"Documents", @"Library", @"tmp", @"SystemData"]) {
+        NSString *dir = [home stringByAppendingPathComponent:sub];
+        BOOL isDir = NO;
+        if (![fm fileExistsAtPath:dir isDirectory:&isDir] || !isDir) continue;
+        for (NSString *child in [fm contentsOfDirectoryAtPath:dir error:nil]) {
+            [fm removeItemAtPath:[dir stringByAppendingPathComponent:child] error:nil];
+        }
+    }
+
+    // Recreate the folders IG expects to exist immediately on next launch.
+    for (NSString *sub in @[@"Documents", @"Library/Caches", @"Library/Preferences", @"tmp"]) {
+        [fm createDirectoryAtPath:[home stringByAppendingPathComponent:sub]
+      withIntermediateDirectories:YES attributes:nil error:nil];
+    }
+
+    // Persist the tweak's own tokens again so the panel keeps its configuration.
+    [[GhostTokenStore shared] save];
+
+    NSLog(@"[GhostTweak] App data wiped (fresh-install reset)");
+}
 
 @interface GhostSettingsController : UITableViewController
 @property (nonatomic, strong) UITextView *pasteView;
@@ -16,7 +73,7 @@
                                                       target:self action:@selector(done)];
 }
 
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 4; }
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 5; }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     switch (section) {
@@ -24,6 +81,7 @@
         case 1: return 4;
         case 2: return 1;
         case 3: return 1;
+        case 4: return 1;
         default: return 0;
     }
 }
@@ -34,6 +92,7 @@
         case 1: return @"Actions";
         case 2: return @"Paste token block";
         case 3: return @"Status";
+        case 4: return @"Danger zone";
         default: return nil;
     }
 }
@@ -41,6 +100,9 @@
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
     if (section == 2) {
         return @"Paste the Key: value block from GhostBrowser → Instagram bridge. Import injects cookies immediately; force-quit Instagram if the feed stays logged out.";
+    }
+    if (section == 4) {
+        return @"Wipes cookies, caches and all app data so Instagram reopens as a fresh install (logged out). Your tweak tokens above are kept. Instagram will close when done — reopen it manually.";
     }
     return nil;
 }
@@ -70,6 +132,12 @@
         else if (indexPath.row == 2) cell.textLabel.text = @"Copy token block";
         else cell.textLabel.text = @"Generate missing device IDs";
         if (indexPath.row == 0) cell.textLabel.textColor = self.view.tintColor;
+        return cell;
+    }
+    if (indexPath.section == 4) {
+        UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
+        cell.textLabel.text = @"Delete app data (fresh install)";
+        cell.textLabel.textColor = [UIColor systemRedColor];
         return cell;
     }
     if (indexPath.section == 2) {
@@ -118,7 +186,30 @@
             [self alert:@"Generated" msg:@"Empty device IDs filled."];
         }
         [self.tableView reloadData];
+    } else if (indexPath.section == 4) {
+        [self confirmWipe];
     }
+}
+
+- (void)confirmWipe {
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Delete app data?"
+        message:@"Instagram will be logged out and reset to a fresh install. Your tweak tokens are kept. The app will close afterward."
+        preferredStyle:UIAlertControllerStyleAlert];
+    [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [a addAction:[UIAlertAction actionWithTitle:@"Delete & Close" style:UIAlertActionStyleDestructive
+                                        handler:^(__unused UIAlertAction *act) {
+        GhostWipeAppData();
+        UIAlertController *done = [UIAlertController alertControllerWithTitle:@"App data cleared"
+            message:@"Instagram will now close. Reopen it for a fresh, logged-out session."
+            preferredStyle:UIAlertControllerStyleAlert];
+        [done addAction:[UIAlertAction actionWithTitle:@"Close now" style:UIAlertActionStyleDefault
+                                              handler:^(__unused UIAlertAction *a2) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{ exit(0); });
+        }]];
+        [self presentViewController:done animated:YES completion:nil];
+    }]];
+    [self presentViewController:a animated:YES completion:nil];
 }
 
 - (void)toggleHeaders:(UISwitch *)sw {

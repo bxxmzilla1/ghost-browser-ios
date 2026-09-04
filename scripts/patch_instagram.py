@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Patch an Instagram .ipa to load GhostTweak.dylib (Blaze-style sideload tweak).
 
+Also strips the bundled Blaze tweak (BlazeUniversal.dylib + CydiaSubstrate.framework)
+so only GhostTweak remains. Sideloadbypass2.dylib is kept (it aids sideloading and does
+not depend on Blaze).
+
 Usage:
   python patch_instagram.py <input.ipa> <GhostTweak.dylib> [output.ipa]
 
@@ -23,6 +27,11 @@ except ImportError:
 DYLIB_NAME = "GhostTweak.dylib"
 LOAD_PATH = f"@executable_path/Frameworks/{DYLIB_NAME}"
 
+# Load-command name fragments to remove from the main binary (the Blaze tweak + its dep).
+REMOVE_LOAD_FRAGMENTS = ("BlazeUniversal", "CydiaSubstrate")
+# Files / framework dirs to delete from Frameworks/.
+REMOVE_PATHS = ("BlazeUniversal.dylib", "CydiaSubstrate.framework")
+
 
 def macho_slice(binary_path: Path):
     """Return the arm64 Mach-O slice (handles thin + fat binaries)."""
@@ -36,39 +45,48 @@ def macho_slice(binary_path: Path):
     return parsed
 
 
-def inject_dylib(binary: Path, install_name: str) -> None:
+def patch_binary(binary: Path, install_name: str, remove_fragments: tuple) -> None:
     fat = lief.MachO.parse(str(binary))
     if fat is None:
         raise SystemExit(f"Cannot parse Mach-O: {binary}")
 
     def patch_slice(macho) -> bool:
-        for cmd in macho.commands:
-            if isinstance(cmd, lief.MachO.DylibCommand) and cmd.name == install_name:
-                print(f"Already loads {install_name}")
-                return False
-        # Weak load: if the dylib fails to load or sign, dyld continues instead of killing
-        # the app. Prevents the classic "crash immediately after sideload" from a bad sign.
-        if hasattr(lief.MachO.DylibCommand, "weak_lib"):
-            dylib_cmd = lief.MachO.DylibCommand.weak_lib(install_name)
+        changed = False
+
+        # Remove unwanted load commands (Blaze + Substrate).
+        to_remove = [c for c in macho.commands
+                     if isinstance(c, lief.MachO.DylibCommand)
+                     and any(frag in c.name for frag in remove_fragments)]
+        for c in to_remove:
+            macho.remove(c)
+            print(f"Removed load command: {c.name}")
+            changed = True
+
+        # Add GhostTweak (weak load so a bad sign can't crash the app).
+        already = any(isinstance(c, lief.MachO.DylibCommand) and c.name == install_name
+                      for c in macho.commands)
+        if already:
+            print(f"Already loads {install_name}")
         else:
-            dylib_cmd = lief.MachO.DylibCommand.load_dylib(install_name)
-        macho.add(dylib_cmd)
-        return True
+            if hasattr(lief.MachO.DylibCommand, "weak_lib"):
+                dylib_cmd = lief.MachO.DylibCommand.weak_lib(install_name)
+            else:
+                dylib_cmd = lief.MachO.DylibCommand.load_dylib(install_name)
+            macho.add(dylib_cmd)
+            print(f"Injected load command: {install_name}")
+            changed = True
+        return changed
 
     if isinstance(fat, lief.MachO.FatBinary):
         changed = False
         for i in range(fat.size):
             if patch_slice(fat.at(i)):
                 changed = True
-        if not changed:
-            return
-        fat.write(str(binary))
+        if changed:
+            fat.write(str(binary))
     else:
-        if not patch_slice(fat):
-            return
-        fat.write(str(binary))
-
-    print(f"Injected LC_LOAD_DYLIB: {install_name}")
+        if patch_slice(fat):
+            fat.write(str(binary))
 
 
 def find_app_dir(root: Path) -> Path:
@@ -95,6 +113,16 @@ def patch_ipa(ipa_in: Path, dylib: Path, ipa_out: Path) -> None:
         frameworks = app / "Frameworks"
         frameworks.mkdir(exist_ok=True)
 
+        # Strip the Blaze tweak files.
+        for name in REMOVE_PATHS:
+            target = frameworks / name
+            if target.is_dir():
+                shutil.rmtree(target)
+                print(f"Deleted Frameworks/{name}")
+            elif target.exists():
+                target.unlink()
+                print(f"Deleted Frameworks/{name}")
+
         dest_dylib = frameworks / DYLIB_NAME
         shutil.copy2(dylib, dest_dylib)
         print(f"Copied {DYLIB_NAME} -> Frameworks/")
@@ -104,7 +132,7 @@ def patch_ipa(ipa_in: Path, dylib: Path, ipa_out: Path) -> None:
         if not binary.is_file():
             raise SystemExit(f"Main binary not found: {binary}")
 
-        inject_dylib(binary, LOAD_PATH)
+        patch_binary(binary, LOAD_PATH, REMOVE_LOAD_FRAGMENTS)
 
         ipa_out.parent.mkdir(parents=True, exist_ok=True)
         if ipa_out.exists():

@@ -167,21 +167,9 @@ final class ProfileStore: ObservableObject {
         return session
     }
 
-    func newSession(family: DeviceFamily?, proxy: ProxyConfig? = nil) -> BrowserSession {
+    func newSession(family: DeviceFamily?) -> BrowserSession {
         let profile = family.map { FingerprintProfile.random(family: $0) } ?? FingerprintProfile.random()
-        var session = BrowserSession(name: profile.deviceLabel, profile: profile)
-        session.proxy = proxy
-        return session
-    }
-
-    /// Pins a session's identity to a geoip result (Camoufox: geo follows the proxy IP). Rebuilds the
-    /// web view when that session is the active one so the new zone/location apply immediately.
-    func pin(geo: GeoIP.Result, to id: UUID) {
-        mutate(id: id) { s in
-            s.profile.pin(geo: geo)
-            s.mobileProfileBackup?.pin(geo: geo)
-        }
-        if id == activeID { revision += 1 }
+        return BrowserSession(name: profile.deviceLabel, profile: profile)
     }
 
     func duplicateActive() -> BrowserSession {

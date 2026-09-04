@@ -155,7 +155,7 @@ private final class ProxyAuthDelegate: NSObject, URLSessionTaskDelegate {
                     didReceive challenge: URLAuthenticationChallenge,
                     completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
         let space = challenge.protectionSpace
-        if space.isProxy, let p = proxy, !(p.user.isEmpty && p.pass.isEmpty), challenge.previousFailureCount < 2 {
+        if space.isProxy(), let p = proxy, !(p.user.isEmpty && p.pass.isEmpty), challenge.previousFailureCount < 2 {
             completionHandler(.useCredential, URLCredential(user: p.user, password: p.pass, persistence: .forSession))
         } else {
             completionHandler(.performDefaultHandling, nil)

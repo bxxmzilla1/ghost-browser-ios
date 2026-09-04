@@ -16,6 +16,7 @@ struct BrowserView: View {
     @State private var urlText = ""
     @State private var showSettings = false
     @State private var showSessions = false
+    @State private var showIGBridge = false
     @State private var toast: String?
     @FocusState private var urlFocused: Bool
 
@@ -80,6 +81,19 @@ struct BrowserView: View {
                 if id != store.activeID { store.setActive(id) }
             })
             .environmentObject(store)
+        }
+        .sheet(isPresented: $showIGBridge) {
+            InstagramBridgeView(
+                currentURL: model.currentURL,
+                exportCookies: { done in model.exportCookies(completion: done) },
+                importCookies: { cookies in
+                    model.restoreCookies(cookies) { count in
+                        if !store.privateMode { snapshotNow() }
+                        model.load("https://www.instagram.com/")
+                        showToast(count > 0 ? "\(count) Instagram cookies set" : "No cookies set")
+                    }
+                }
+            )
         }
     }
 
@@ -171,6 +185,11 @@ struct BrowserView: View {
                     Label("Re-roll canvas/audio noise", systemImage: "waveform.path")
                 }
                 Divider()
+                Button {
+                    showIGBridge = true
+                } label: {
+                    Label("Instagram bridge…", systemImage: "arrow.left.arrow.right.circle")
+                }
                 Toggle(isOn: desktopSiteBinding) {
                     Label("Desktop site", systemImage: "desktopcomputer.and.arrow.down")
                 }

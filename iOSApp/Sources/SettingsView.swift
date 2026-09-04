@@ -10,6 +10,8 @@ struct SettingsView: View {
     @State private var proxyText: String = ""
     @State private var loaded = false
     @State private var showClearConfirm = false
+    @State private var geoBusy = false
+    @State private var geoMessage: String?
 
     private var parsedProxy: ProxyConfig? { ProxyConfig.parse(proxyText) }
     private var proxyChanged: Bool { parsedProxy != store.proxy }
@@ -35,6 +37,7 @@ struct SettingsView: View {
                 navigatorSection
                 screenSection
                 localeSection
+                locationSection
                 graphicsSection
                 privacySection
                 aboutSection
@@ -243,6 +246,88 @@ struct SettingsView: View {
             Text("Date, Date.prototype.getTimezoneOffset and Intl.DateTimeFormat are rewritten to this zone. Intl defaults use the navigator language above.")
         }
         .disabled(!draft.spoofTimezone)
+    }
+
+    // MARK: Location (Camoufox geoip)
+
+    private var locationSection: some View {
+        Section {
+            Button {
+                matchLocationToIP()
+            } label: {
+                HStack {
+                    Label(parsedProxy == nil ? "Match location to my IP" : "Match location to proxy IP", systemImage: "location.viewfinder")
+                    Spacer()
+                    if geoBusy { ProgressView() }
+                }
+            }
+            .disabled(geoBusy || proxyInvalid)
+            if let msg = geoMessage {
+                Text(msg).font(.footnote).foregroundColor(.secondary)
+            }
+            HStack {
+                Text("Latitude")
+                Spacer()
+                TextField("—", value: $draft.latitude, format: .number)
+                    .keyboardType(.numbersAndPunctuation)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 130)
+            }
+            HStack {
+                Text("Longitude")
+                Spacer()
+                TextField("—", value: $draft.longitude, format: .number)
+                    .keyboardType(.numbersAndPunctuation)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 130)
+            }
+            HStack {
+                Text("Accuracy (m)")
+                Spacer()
+                TextField("auto", value: $draft.geoAccuracy, format: .number)
+                    .keyboardType(.numberPad)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 130)
+            }
+            if draft.hasGeo {
+                Button("Clear location", role: .destructive) {
+                    draft.latitude = nil; draft.longitude = nil; draft.geoAccuracy = nil
+                    geoMessage = nil
+                }
+            }
+        } header: {
+            Text("Location")
+        } footer: {
+            Text("Camoufox-style geo: one tap looks up the session's exit IP through its proxy and pins the identity to that place — time zone, language and navigator.geolocation all agree with the IP. Without coordinates, sites get the phone's real position. Leave accuracy empty for a stable per-identity value.")
+        }
+    }
+
+    private func matchLocationToIP() {
+        geoBusy = true
+        geoMessage = nil
+        GeoIP.resolve(through: parsedProxy) { result in
+            geoBusy = false
+            switch result {
+            case .success(let geo):
+                draft.latitude = (geo.latitude * 10000).rounded() / 10000
+                draft.longitude = (geo.longitude * 10000).rounded() / 10000
+                if draft.geoAccuracy == nil { draft.geoAccuracy = Double(20 + Int(draft.seed % 100)) }
+                var changed = ["coordinates"]
+                if let tz = geo.timeZone {
+                    draft.timeZone = tz
+                    draft.spoofTimezone = true
+                    changed.append("time zone \(tz)")
+                }
+                if let loc = geo.locale, loc != draft.language {
+                    draft.language = loc
+                    draft.languages = GeoIP.languages(for: loc)
+                    changed.append("language \(loc)")
+                }
+                geoMessage = "Pinned to \(geo.label): " + changed.joined(separator: ", ") + ". Tap Apply to save."
+            case .failure(let error):
+                geoMessage = "Lookup failed: \(error.localizedDescription)"
+            }
+        }
     }
 
     private var graphicsSection: some View {

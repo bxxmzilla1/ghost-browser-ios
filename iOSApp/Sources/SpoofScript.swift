@@ -33,12 +33,18 @@ enum SpoofScript {
             var vendor: String
             var renderer: String
         }
+        struct Geo: Encodable {
+            var lat: Double
+            var lon: Double
+            var accuracy: Double
+        }
 
         var navigator: Navigator?
         var screen: Screen?
         var timeZone: String?
         var locale: String?
         var webgl: WebGL?
+        var geolocation: Geo?
         var canvas: Bool
         var audio: Bool
         var seed: UInt32
@@ -91,6 +97,12 @@ enum SpoofScript {
         }
         if p.spoofTimezone { cfg.timeZone = p.timeZone }
         if p.spoofWebGL { cfg.webgl = Config.WebGL(vendor: p.webglVendor, renderer: p.webglRenderer) }
+        // Pinned geolocation (Camoufox: the map location follows the proxy exit IP). Accuracy is
+        // derived from the seed so it is stable per identity but not a suspicious round number.
+        if let la = p.latitude, let lo = p.longitude {
+            let acc = p.geoAccuracy ?? Double(20 + Int(p.seed % 100))
+            cfg.geolocation = Config.Geo(lat: la, lon: lo, accuracy: acc)
+        }
 
         let json: String
         if let data = try? JSONEncoder().encode(cfg), let s = String(data: data, encoding: .utf8) {
@@ -527,6 +539,59 @@ enum SpoofScript {
     try { Object.defineProperty(NewDate, 'length', { value: 7, configurable: true }); } catch (e) {}
     mask(NewDate, OrigDate);
     try { window.Date = NewDate; } catch (e) {}
+  }
+
+  // ---------- geolocation ----------
+  // Camoufox-style pinned position: every getCurrentPosition/watchPosition call resolves to the
+  // identity's coordinates (normally the proxy exit IP's city), with a small per-call wobble like
+  // a real GPS fix. The page never sees the phone's real position or a permission prompt.
+  if (cfg.geolocation && window.navigator && navigator.geolocation) {
+    var G = cfg.geolocation;
+    var geoWatches = {};
+    var geoWatchSeq = 0;
+    function wobble(i) { return (rng(i) - 128) / 128 * (G.accuracy / 111320) * 0.35; }
+    function makePosition() {
+      var t = Date.now();
+      var coords = {
+        latitude: G.lat + wobble(t & 0xFFFF), longitude: G.lon + wobble((t >> 3) & 0xFFFF),
+        accuracy: Math.round(G.accuracy * (0.85 + (rng(t & 0xFF) / 255) * 0.3)),
+        altitude: null, altitudeAccuracy: null, heading: null, speed: null
+      };
+      try { if (window.GeolocationCoordinates) Object.setPrototypeOf(coords, GeolocationCoordinates.prototype); } catch (e) {}
+      var pos = { coords: coords, timestamp: t };
+      try { if (window.GeolocationPosition) Object.setPrototypeOf(pos, GeolocationPosition.prototype); } catch (e) {}
+      try { pos.toJSON = function toJSON() { return { coords: coords, timestamp: t }; }; } catch (e) {}
+      return pos;
+    }
+    var GP = window.Geolocation ? Geolocation.prototype : Object.getPrototypeOf(navigator.geolocation);
+    var origGCP = GP.getCurrentPosition, origWP = GP.watchPosition, origCW = GP.clearWatch;
+    GP.getCurrentPosition = mask(function getCurrentPosition(success) {
+      if (typeof success === 'function') { setTimeout(function () { try { success(makePosition()); } catch (e) {} }, 40 + rng(7) % 120); }
+    }, origGCP);
+    GP.watchPosition = mask(function watchPosition(success) {
+      var id = ++geoWatchSeq;
+      if (typeof success === 'function') {
+        var fire = function () { if (geoWatches[id]) { try { success(makePosition()); } catch (e) {} } };
+        geoWatches[id] = setInterval(fire, 5000 + rng(id) * 20);
+        setTimeout(fire, 40 + rng(id) % 120);
+      }
+      return id;
+    }, origWP);
+    GP.clearWatch = mask(function clearWatch(id) {
+      if (geoWatches[id]) { clearInterval(geoWatches[id]); delete geoWatches[id]; }
+    }, origCW);
+    // Permission query must agree: a real user already granted location.
+    if (navigator.permissions && navigator.permissions.query) {
+      var origPQ = navigator.permissions.query;
+      navigator.permissions.query = mask(function query(desc) {
+        if (desc && desc.name === 'geolocation') {
+          var st = { state: 'granted', onchange: null, addEventListener: function addEventListener() {}, removeEventListener: function removeEventListener() {}, dispatchEvent: function dispatchEvent() { return true; } };
+          try { if (window.PermissionStatus) Object.setPrototypeOf(st, PermissionStatus.prototype); } catch (e) {}
+          return Promise.resolve(st);
+        }
+        return origPQ.apply(this, arguments);
+      }, origPQ);
+    }
   }
 
   // ---------- WebGL ----------

@@ -95,6 +95,12 @@ struct FingerprintProfile: Codable, Equatable, Identifiable {
     var webglRenderer: String
     var seed: UInt32 = UInt32.random(in: 1...UInt32.max)
 
+    /// Camoufox-style pinned geolocation. When set, navigator.geolocation reports these
+    /// coordinates. Usually filled from the proxy exit IP so the map location matches the IP.
+    var latitude: Double?
+    var longitude: Double?
+    var geoAccuracy: Double?   // metres; a plausible value is ~20–120
+
     // MARK: Memberwise init (kept explicit so Codable customisation below doesn't remove it)
 
     init(id: UUID = UUID(), name: String, kind: BrowserKind, deviceName: String = "",
@@ -133,6 +139,7 @@ struct FingerprintProfile: Codable, Equatable, Identifiable {
         case userAgent, platform, vendor, language, languages, hardwareConcurrency, deviceMemory, maxTouchPoints, doNotTrack
         case screenWidth, screenHeight, availWidth, availHeight, colorDepth, devicePixelRatio
         case timeZone, webglVendor, webglRenderer, seed
+        case latitude, longitude, geoAccuracy
     }
 
     init(from decoder: Decoder) throws {
@@ -169,6 +176,18 @@ struct FingerprintProfile: Codable, Equatable, Identifiable {
         webglVendor = try c.decodeIfPresent(String.self, forKey: .webglVendor) ?? "Apple Inc."
         webglRenderer = try c.decodeIfPresent(String.self, forKey: .webglRenderer) ?? "Apple GPU"
         seed = try c.decodeIfPresent(UInt32.self, forKey: .seed) ?? UInt32.random(in: 1...UInt32.max)
+        latitude = try c.decodeIfPresent(Double.self, forKey: .latitude)
+        longitude = try c.decodeIfPresent(Double.self, forKey: .longitude)
+        geoAccuracy = try c.decodeIfPresent(Double.self, forKey: .geoAccuracy)
+    }
+
+    /// True when a fixed geolocation is pinned for this identity.
+    var hasGeo: Bool { latitude != nil && longitude != nil }
+
+    /// Short "lat, lon" label for the editor (or "not set").
+    var geoLabel: String {
+        guard let la = latitude, let lo = longitude else { return "Not set" }
+        return String(format: "%.4f, %.4f", la, lo)
     }
 
     // MARK: Derived values
@@ -656,6 +675,9 @@ extension FingerprintProfile {
         d.language = language
         d.languages = languages
         d.timeZone = timeZone
+        d.latitude = latitude
+        d.longitude = longitude
+        d.geoAccuracy = geoAccuracy
         d.doNotTrack = doNotTrack
         d.spoofNavigator = spoofNavigator
         d.spoofScreen = spoofScreen

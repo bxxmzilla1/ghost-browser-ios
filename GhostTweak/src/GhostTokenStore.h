@@ -19,6 +19,12 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy) NSString *csrftoken;
 @property (nonatomic, copy) NSString *rur;
 
+// Spoofed device identity (what Instagram sees as the hardware).
+@property (nonatomic, copy) NSString *deviceModel;      // hw.machine, e.g. "iPhone16,1"
+@property (nonatomic, copy) NSString *deviceModelName;  // marketing, e.g. "iPhone 15 Pro"
+@property (nonatomic, copy) NSString *deviceName;       // [UIDevice name], e.g. "iPhone"
+@property (nonatomic, copy) NSString *systemVersion;    // e.g. "18.5"
+
 @property (nonatomic, assign) BOOL injectHeaders;
 @property (nonatomic, assign) BOOL injectCookies;
 @property (nonatomic, copy) NSString *proxyHost;
@@ -45,6 +51,15 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSString *)effectiveAuthorization;
 
 - (void)fillMissingGeneratedIDs;
+
+/// True once a spoofed hardware identity has been chosen.
+- (BOOL)hasDeviceProfile;
+/// Pick a brand-new random iPhone (model + iOS) and fresh IDFV/IDFA/androidID/ig_did/MID.
+/// This is the "new device" the app will report after the next launch.
+- (void)regenerateDeviceProfile;
+/// Short human label for the current spoofed device, e.g. "iPhone 15 Pro · iOS 18.5".
+- (NSString *)deviceSummary;
+
 - (NSString *)generateAndroidID;
 - (NSString *)generateUUIDUpper;
 - (NSString *)generateUUIDLower;

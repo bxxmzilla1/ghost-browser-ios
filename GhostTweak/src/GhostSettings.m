@@ -3,6 +3,7 @@
 #import "GhostTokenStore.h"
 
 extern NSString *GhostClearAppData(BOOL includeKeychain);
+extern NSString *GhostWipeAndRespoof(BOOL includeKeychain);
 extern void GhostCloseApp(void);
 extern BOOL GhostConsumeBridgeForced(BOOL force);
 
@@ -20,15 +21,16 @@ extern BOOL GhostConsumeBridgeForced(BOOL force);
                                                       target:self action:@selector(done)];
 }
 
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 5; }
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 6; }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     switch (section) {
         case 0: return 2;
         case 1: return 5;
         case 2: return 1;
-        case 3: return 2;   // Reset: clear data / clear data + keychain
-        case 4: return 1;   // Status
+        case 3: return 2;   // Device: current device / randomize now
+        case 4: return 3;   // Reset: clear data / clear data + keychain / new device
+        case 5: return 1;   // Status
         default: return 0;
     }
 }
@@ -38,8 +40,9 @@ extern BOOL GhostConsumeBridgeForced(BOOL force);
         case 0: return @"Injection";
         case 1: return @"Actions";
         case 2: return @"Paste token block";
-        case 3: return @"Reset";
-        case 4: return @"Status";
+        case 3: return @"Spoofed device";
+        case 4: return @"Reset";
+        case 5: return @"Status";
         default: return nil;
     }
 }
@@ -49,7 +52,10 @@ extern BOOL GhostConsumeBridgeForced(BOOL force);
         return @"Paste the Key: value block from GhostBrowser → Instagram bridge. Import injects cookies immediately; force-quit Instagram if the feed stays logged out.";
     }
     if (section == 3) {
-        return @"Factory-reset Instagram like Blaze: wipes login, caches, cookies and web data so it opens as a fresh install. Your Ghost Tweak tokens/settings are kept. \"+ keychain\" also clears saved logins/passcodes. Only this app's data is affected. The app closes afterwards — reopen it.";
+        return @"Instagram sees this hardware (model, iOS, IDFV/IDFA, ig_did). \"Randomize now\" picks a new device and relaunches. Nothing links back to the previous identity.";
+    }
+    if (section == 4) {
+        return @"\"New spoofed device\" wipes Instagram to a fresh install AND rolls a new device — the app reopens as a brand-new, spoofed phone. \"Clear app data\" resets without changing the device. Your Ghost Tweak settings are kept; only this app is affected. The app closes afterwards — reopen it.";
     }
     return nil;
 }
@@ -97,8 +103,27 @@ extern BOOL GhostConsumeBridgeForced(BOOL force);
         return cell;
     }
     if (indexPath.section == 3) {
+        if (indexPath.row == 0) {
+            UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];
+            cell.selectionStyle = UITableViewCellSelectionStyleNone;
+            cell.textLabel.text = [t deviceSummary];
+            cell.detailTextLabel.text = t.deviceModel.length ?
+                [NSString stringWithFormat:@"%@ · IDFV %@", t.deviceModel,
+                 t.idfv.length >= 8 ? [t.idfv substringToIndex:8] : t.idfv] :
+                @"Tap Randomize to spoof";
+            cell.detailTextLabel.textColor = [UIColor secondaryLabelColor];
+            return cell;
+        }
         UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
-        cell.textLabel.text = indexPath.row == 0 ? @"Clear app data" : @"Clear app data + keychain";
+        cell.textLabel.text = @"Randomize device now";
+        cell.textLabel.textColor = self.view.tintColor;
+        return cell;
+    }
+    if (indexPath.section == 4) {
+        UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
+        if (indexPath.row == 0) cell.textLabel.text = @"Clear app data";
+        else if (indexPath.row == 1) cell.textLabel.text = @"Clear app data + keychain";
+        else cell.textLabel.text = @"New spoofed device (wipe + re-spoof)";
         cell.textLabel.textColor = [UIColor systemRedColor];
         return cell;
     }
@@ -140,8 +165,40 @@ extern BOOL GhostConsumeBridgeForced(BOOL force);
         }
         [self.tableView reloadData];
     } else if (indexPath.section == 3) {
-        [self confirmClearIncludingKeychain:(indexPath.row == 1)];
+        if (indexPath.row == 1) [self confirmRandomizeDevice];
+    } else if (indexPath.section == 4) {
+        if (indexPath.row == 2) [self confirmNewDevice];
+        else [self confirmClearIncludingKeychain:(indexPath.row == 1)];
     }
+}
+
+- (void)confirmRandomizeDevice {
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Randomize device?"
+        message:@"Instagram will report a new iPhone model, iOS version and fresh IDFV/IDFA/ig_did. Your login and data are kept. The app relaunches to apply it."
+        preferredStyle:UIAlertControllerStyleAlert];
+    [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [a addAction:[UIAlertAction actionWithTitle:@"Randomize" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *act) {
+        [[GhostTokenStore shared] regenerateDeviceProfile];
+        UIAlertController *done = [UIAlertController alertControllerWithTitle:@"New device"
+            message:[[[GhostTokenStore shared] deviceSummary] stringByAppendingString:@"\nRelaunching…"]
+            preferredStyle:UIAlertControllerStyleAlert];
+        [self presentViewController:done animated:YES completion:^{ GhostCloseApp(); }];
+    }]];
+    [self presentViewController:a animated:YES completion:nil];
+}
+
+- (void)confirmNewDevice {
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"New spoofed device?"
+        message:@"Wipes Instagram to a fresh install (data, cookies, keychain) AND rolls a brand-new device identity. Ghost Tweak settings are kept. The app closes — reopen it as a new phone."
+        preferredStyle:UIAlertControllerStyleAlert];
+    [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [a addAction:[UIAlertAction actionWithTitle:@"Wipe + re-spoof" style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *act) {
+        NSString *summary = GhostWipeAndRespoof(YES);
+        UIAlertController *done = [UIAlertController alertControllerWithTitle:@"Done"
+            message:[summary stringByAppendingString:@"\nClosing…"] preferredStyle:UIAlertControllerStyleAlert];
+        [self presentViewController:done animated:YES completion:^{ GhostCloseApp(); }];
+    }]];
+    [self presentViewController:a animated:YES completion:nil];
 }
 
 - (void)confirmClearIncludingKeychain:(BOOL)includeKeychain {

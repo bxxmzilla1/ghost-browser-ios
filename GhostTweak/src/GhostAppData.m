@@ -2,6 +2,7 @@
 #import <UIKit/UIKit.h>
 #import <WebKit/WebKit.h>
 #import <Security/Security.h>
+#import "GhostTokenStore.h"
 
 // The tweak's own prefs plist — preserved across a reset so your device IDs / tokens / toggles
 // survive a "Clear app data" (this mirrors Blaze keeping its own settings after a reset).
@@ -74,6 +75,18 @@ NSString *GhostClearAppData(BOOL includeKeychain) {
     return includeKeychain
         ? @"Instagram data + keychain cleared."
         : @"Instagram data cleared.";
+}
+
+/// "New device": pick a fresh spoofed identity AND factory-reset the app, so the next launch comes
+/// up clean and reporting a brand-new device (new model/iOS + new IDFV/IDFA/ig_did). This is the
+/// "wipe everything so it starts all over again spoofed" flow. Keychain wipe is recommended here so
+/// Instagram's own internally-generated device IDs are dropped and regenerated too.
+NSString *GhostWipeAndRespoof(BOOL includeKeychain) {
+    [[GhostTokenStore shared] regenerateDeviceProfile];
+    GhostClearAppData(includeKeychain);
+    NSString *dev = [[GhostTokenStore shared] deviceSummary];
+    NSLog(@"[GhostTweak] Wipe + re-spoof done → %@ (keychain=%d)", dev, includeKeychain);
+    return [NSString stringWithFormat:@"New device: %@.\nInstagram was reset to a fresh install.", dev];
 }
 
 /// There is no public "relaunch" API. Suspending first makes iOS treat the next cold launch as a

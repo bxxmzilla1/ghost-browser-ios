@@ -19,6 +19,7 @@ static NSString *const kNoData = @"No data available";
     G(username); G(androidID); G(deviceID); G(idfv); G(idfa);
     G(authorization); G(igUserID); G(igIntendedUserID); G(xMID); G(xIGWWWClaim);
     G(sessionid); G(csrftoken); G(rur);
+    G(deviceModel); G(deviceModelName); G(deviceName); G(systemVersion);
     G(proxyHost); G(proxyUser); G(proxyPass);
 #undef G
     _injectHeaders = [d boolForKey:@"injectHeaders"] ?: YES;
@@ -36,6 +37,7 @@ static NSString *const kNoData = @"No data available";
     S(username); S(androidID); S(deviceID); S(idfv); S(idfa);
     S(authorization); S(igUserID); S(igIntendedUserID); S(xMID); S(xIGWWWClaim);
     S(sessionid); S(csrftoken); S(rur);
+    S(deviceModel); S(deviceModelName); S(deviceName); S(systemVersion);
     S(proxyHost); S(proxyUser); S(proxyPass);
 #undef S
     [d setBool:_injectHeaders forKey:@"injectHeaders"];
@@ -149,7 +151,73 @@ static NSString *NormalizeKey(NSString *s) {
     if (!_idfa.length) _idfa = [self generateUUIDUpper];
     if (!_deviceID.length) _deviceID = [self generateUUIDLower];
     if (!_xMID.length) _xMID = [self generateXMID];
+    if (![self hasDeviceProfile]) [self regenerateDeviceProfile];
     [self save];
+}
+
+#pragma mark - Spoofed device identity
+
+// Plausible modern iPhones with a sensible iOS pairing. hw.machine is what Instagram
+// fingerprints; the marketing name + iOS are for display and secondary signals.
++ (NSArray<NSArray<NSString *> *> *)devicePool {
+    static NSArray *pool;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        pool = @[
+            @[@"iPhone12,1", @"iPhone 11",         @"17.6.1"],
+            @[@"iPhone12,3", @"iPhone 11 Pro",     @"17.7.2"],
+            @[@"iPhone13,1", @"iPhone 12 mini",    @"17.6.1"],
+            @[@"iPhone13,2", @"iPhone 12",         @"18.3.2"],
+            @[@"iPhone13,3", @"iPhone 12 Pro",     @"18.5"],
+            @[@"iPhone13,4", @"iPhone 12 Pro Max", @"18.6.1"],
+            @[@"iPhone14,4", @"iPhone 13 mini",    @"18.5"],
+            @[@"iPhone14,5", @"iPhone 13",         @"18.6.1"],
+            @[@"iPhone14,2", @"iPhone 13 Pro",     @"18.6.1"],
+            @[@"iPhone14,3", @"iPhone 13 Pro Max", @"18.6.1"],
+            @[@"iPhone14,7", @"iPhone 14",         @"18.6.1"],
+            @[@"iPhone14,8", @"iPhone 14 Plus",    @"18.6.1"],
+            @[@"iPhone15,2", @"iPhone 14 Pro",     @"18.6.1"],
+            @[@"iPhone15,3", @"iPhone 14 Pro Max", @"26.0"],
+            @[@"iPhone15,4", @"iPhone 15",         @"26.0"],
+            @[@"iPhone15,5", @"iPhone 15 Plus",    @"26.0"],
+            @[@"iPhone16,1", @"iPhone 15 Pro",     @"26.0.1"],
+            @[@"iPhone16,2", @"iPhone 15 Pro Max", @"26.0.1"],
+            @[@"iPhone17,3", @"iPhone 16",         @"26.0.1"],
+            @[@"iPhone17,4", @"iPhone 16 Plus",    @"26.0.1"],
+            @[@"iPhone17,1", @"iPhone 16 Pro",     @"26.0.1"],
+            @[@"iPhone17,2", @"iPhone 16 Pro Max", @"26.0.1"],
+        ];
+    });
+    return pool;
+}
+
+- (BOOL)hasDeviceProfile {
+    return _deviceModel.length > 0;
+}
+
+- (void)regenerateDeviceProfile {
+    NSArray<NSArray<NSString *> *> *pool = [GhostTokenStore devicePool];
+    NSArray<NSString *> *pick = pool[arc4random_uniform((uint32_t)pool.count)];
+    _deviceModel     = pick[0];
+    _deviceModelName = pick[1];
+    _systemVersion   = pick[2];
+    _deviceName      = @"iPhone"; // iOS returns a generic name to unentitled apps anyway
+
+    // Fresh per-device identifiers so nothing links back to the previous identity.
+    _idfv      = [self generateUUIDUpper];
+    _idfa      = [self generateUUIDUpper];
+    _androidID = [self generateAndroidID];
+    _deviceID  = [self generateUUIDLower]; // ig_did
+    _xMID      = [self generateXMID];
+    [self save];
+    NSLog(@"[GhostTweak] New spoofed device: %@ (%@) iOS %@", _deviceModelName, _deviceModel, _systemVersion);
+}
+
+- (NSString *)deviceSummary {
+    if (![self hasDeviceProfile]) return @"Not spoofed yet";
+    return [NSString stringWithFormat:@"%@ · iOS %@",
+            _deviceModelName.length ? _deviceModelName : _deviceModel,
+            _systemVersion.length ? _systemVersion : @"?"];
 }
 
 - (NSString *)generateAndroidID {

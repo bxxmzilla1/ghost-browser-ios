@@ -11,7 +11,11 @@ __attribute__((constructor))
 static void GhostTweakInit(void) {
     @autoreleasepool {
         NSLog(@"[GhostTweak] Loading v1.0");
-        [[GhostTokenStore shared] reload];
+        GhostTokenStore *store = [GhostTokenStore shared];
+        [store reload];
+        // First ever launch: choose a spoofed device now (in the dylib constructor, before
+        // Instagram reads hw.machine/IDFV) so the app is spoofed from the very first frame.
+        if (![store hasDeviceProfile]) [store regenerateDeviceProfile];
         GhostInstallHooks();
         GhostInjectCookies();
 

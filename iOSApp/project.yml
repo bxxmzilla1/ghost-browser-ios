@@ -9,6 +9,7 @@ targets:
     platform: iOS
     sources:
       - Sources
+      - Assets.xcassets
     info:
       path: Info.plist
       properties:
@@ -32,15 +33,14 @@ targets:
         NSMotionUsageDescription: Websites may request device motion data.
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
-        LSApplicationQueriesSchemes:
-          - instagram
-          - instagram-stories
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.sideload.ghostbrowser.app
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
         INFOPLIST_KEY_CFBundleDisplayName: GhostBrowser
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS: NO
         TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_VERSION: "5.0"
         DEVELOPMENT_TEAM: ""

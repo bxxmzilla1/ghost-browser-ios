@@ -146,6 +146,29 @@ enum GeoIP {
     }
 }
 
+extension FingerprintProfile {
+    /// Pins this identity to a geoip result (coordinates, time zone, language). Returns a short list
+    /// of what changed, for UI messages.
+    @discardableResult
+    mutating func pin(geo: GeoIP.Result) -> [String] {
+        latitude = (geo.latitude * 10000).rounded() / 10000
+        longitude = (geo.longitude * 10000).rounded() / 10000
+        if geoAccuracy == nil { geoAccuracy = Double(20 + Int(seed % 100)) }
+        var changed = ["coordinates"]
+        if let tz = geo.timeZone {
+            timeZone = tz
+            spoofTimezone = true
+            changed.append("time zone \(tz)")
+        }
+        if let loc = geo.locale, loc != language {
+            language = loc
+            languages = GeoIP.languages(for: loc)
+            changed.append("language \(loc)")
+        }
+        return changed
+    }
+}
+
 /// Answers the proxy's authentication challenge (HTTP CONNECT proxies with user/pass).
 private final class ProxyAuthDelegate: NSObject, URLSessionTaskDelegate {
     private let proxy: ProxyConfig?

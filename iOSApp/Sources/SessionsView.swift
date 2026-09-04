@@ -14,6 +14,7 @@ struct SessionsView: View {
     @State private var showImporter = false
     @State private var importMessage: String?
     @State private var pendingDelete: BrowserSession?
+    @State private var showNewSession = false
 
     var body: some View {
         NavigationView {
@@ -43,12 +44,7 @@ struct SessionsView: View {
                             Image(systemName: "square.and.arrow.down")
                         }
                         Menu {
-                            Section("New session") {
-                                Button { create(.ios) } label: { Label("iPhone · Safari", systemImage: "iphone") }
-                                Button { create(.android) } label: { Label("Android · Chrome", systemImage: "candybarphone") }
-                                Button { create(.desktop) } label: { Label("Desktop · Chrome", systemImage: "desktopcomputer") }
-                                Button { create(nil) } label: { Label("Random device", systemImage: "dice") }
-                            }
+                            Button { showNewSession = true } label: { Label("New session (device + proxy)…", systemImage: "plus.circle") }
                             Button {
                                 let copy = store.add(store.duplicateActive())
                                 onSelect(copy.id)
@@ -63,6 +59,12 @@ struct SessionsView: View {
             }
             .fileImporter(isPresented: $showImporter, allowedContentTypes: [.json, .plainText, .data], allowsMultipleSelection: true) { result in
                 handleImport(result)
+            }
+            .sheet(isPresented: $showNewSession) {
+                NewSessionSheet { family, proxy, matchGeo in
+                    create(family, proxy: proxy, matchGeo: matchGeo)
+                }
+                .environmentObject(store)
             }
             .sheet(item: $renaming) { session in
                 RenameSheet(title: "Rename session", text: session.name) { newName in
@@ -162,9 +164,24 @@ struct SessionsView: View {
 
     // MARK: Actions
 
-    private func create(_ family: DeviceFamily?) {
-        let s = store.add(store.newSession(family: family))
+    private func create(_ family: DeviceFamily?, proxy: ProxyConfig?, matchGeo: Bool) {
+        let s = store.add(store.newSession(family: family, proxy: proxy))
         onSelect(s.id)
+        // Camoufox geoip: pin time zone / language / coordinates to the proxy's exit IP so the
+        // identity never contradicts the address the site sees.
+        guard matchGeo, let proxy = proxy else { return }
+        GeoIP.resolve(through: proxy) { result in
+            switch result {
+            case .success(let geo):
+                store.pin(geo: geo, to: s.id)
+            case .failure(let error):
+                let alert = UIAlertController(title: "Location not matched",
+                                              message: "The proxy connected but the geo lookup failed (\(error.localizedDescription)). The session keeps its random time zone; set it in Fingerprint → Location.",
+                                              preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: "OK", style: .default))
+                TopViewController.present(alert)
+            }
+        }
     }
 
     private func export(_ session: BrowserSession) {
@@ -205,6 +222,129 @@ struct SessionsView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
             withAnimation { if importMessage == text { importMessage = nil } }
         }
+    }
+}
+
+// MARK: - New session sheet (device + proxy, so the real IP is never used by mistake)
+
+struct NewSessionSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    /// (device family or nil for random, proxy, match location to proxy IP)
+    let onCreate: (DeviceFamily?, ProxyConfig?, Bool) -> Void
+
+    @State private var familyChoice: Int = 0       // 0 iPhone, 1 Android, 2 Desktop, 3 Random
+    @State private var proxyText: String = ""
+    @State private var matchGeo = true
+    @State private var confirmNoProxy = false
+    @FocusState private var proxyFocused: Bool
+
+    private var family: DeviceFamily? {
+        switch familyChoice {
+        case 0: return .ios
+        case 1: return .android
+        case 2: return .desktop
+        default: return nil
+        }
+    }
+    private var parsedProxy: ProxyConfig? { ProxyConfig.parse(proxyText) }
+    private var proxyEmpty: Bool { proxyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    private var proxyInvalid: Bool { !proxyEmpty && parsedProxy == nil }
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section {
+                    Picker("Device", selection: $familyChoice) {
+                        Label("iPhone · Safari", systemImage: "iphone").tag(0)
+                        Label("Android · Chrome", systemImage: "candybarphone").tag(1)
+                        Label("Desktop · Chrome", systemImage: "desktopcomputer").tag(2)
+                        Label("Random device", systemImage: "dice").tag(3)
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                } header: {
+                    Text("Device")
+                } footer: {
+                    Text("A fresh, internally consistent identity is generated and pinned to this session for life.")
+                }
+
+                Section {
+                    HStack {
+                        TextField("socks5://host:port:user:pass  ·  host:port", text: $proxyText)
+                            .font(.system(size: 13, design: .monospaced))
+                            .textInputAutocapitalization(.never)
+                            .disableAutocorrection(true)
+                            .keyboardType(.URL)
+                            .focused($proxyFocused)
+                        Button {
+                            if let clip = UIPasteboard.general.string { proxyText = clip.trimmingCharacters(in: .whitespacesAndNewlines) }
+                        } label: {
+                            Image(systemName: "doc.on.clipboard")
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                    HStack {
+                        Text("Status")
+                        Spacer()
+                        if proxyInvalid {
+                            Label("Unrecognised format", systemImage: "exclamationmark.triangle").foregroundColor(.orange)
+                        } else if let p = parsedProxy {
+                            Label(p.label + (p.user.isEmpty ? "" : " (auth)"), systemImage: "checkmark.shield").foregroundColor(.green)
+                        } else {
+                            Label("No proxy — your real IP would be visible", systemImage: "exclamationmark.shield").foregroundColor(.red)
+                        }
+                    }
+                    .font(.footnote)
+                    Toggle("Match location to proxy IP", isOn: $matchGeo)
+                        .disabled(parsedProxy == nil)
+                } header: {
+                    Text("Proxy (required)")
+                } footer: {
+                    if ProxyConfig.isSupported {
+                        Text("Every request of this session goes through the proxy. \"Match location\" looks up the proxy's exit IP right after creation and pins the time zone, language and GPS position to it (Camoufox geoip), so nothing about the identity contradicts the IP.")
+                    } else {
+                        Text("Per-session proxies need iOS 17 or later. The proxy is saved with the session but this device cannot apply it — browsing would use your real IP.")
+                    }
+                }
+
+                Section {
+                    Button {
+                        onCreate(family, parsedProxy, matchGeo)
+                        dismiss()
+                    } label: {
+                        Label("Create session", systemImage: "plus.circle.fill").frame(maxWidth: .infinity)
+                    }
+                    .font(.body.weight(.semibold))
+                    .disabled(parsedProxy == nil)
+
+                    if proxyEmpty {
+                        Button(role: .destructive) {
+                            confirmNoProxy = true
+                        } label: {
+                            Label("Create without proxy (uses real IP)", systemImage: "exclamationmark.triangle").frame(maxWidth: .infinity)
+                        }
+                        .font(.footnote)
+                    }
+                }
+            }
+            .navigationTitle("New session")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) { Button("Cancel") { dismiss() } }
+            }
+            .confirmationDialog("Browse with your real IP address?", isPresented: $confirmNoProxy, titleVisibility: .visible) {
+                Button("Create without proxy", role: .destructive) {
+                    onCreate(family, nil, false)
+                    dismiss()
+                }
+            } message: {
+                Text("The spoofed fingerprint will be paired with your real IP, which sites can log. You can add a proxy later in Fingerprint → Proxy.")
+            }
+            .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { proxyFocused = true }
+            }
+        }
+        .navigationViewStyle(.stack)
     }
 }
 

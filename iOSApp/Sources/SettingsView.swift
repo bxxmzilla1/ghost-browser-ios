@@ -309,20 +309,7 @@ struct SettingsView: View {
             geoBusy = false
             switch result {
             case .success(let geo):
-                draft.latitude = (geo.latitude * 10000).rounded() / 10000
-                draft.longitude = (geo.longitude * 10000).rounded() / 10000
-                if draft.geoAccuracy == nil { draft.geoAccuracy = Double(20 + Int(draft.seed % 100)) }
-                var changed = ["coordinates"]
-                if let tz = geo.timeZone {
-                    draft.timeZone = tz
-                    draft.spoofTimezone = true
-                    changed.append("time zone \(tz)")
-                }
-                if let loc = geo.locale, loc != draft.language {
-                    draft.language = loc
-                    draft.languages = GeoIP.languages(for: loc)
-                    changed.append("language \(loc)")
-                }
+                let changed = draft.pin(geo: geo)
                 geoMessage = "Pinned to \(geo.label): " + changed.joined(separator: ", ") + ". Tap Apply to save."
             case .failure(let error):
                 geoMessage = "Lookup failed: \(error.localizedDescription)"

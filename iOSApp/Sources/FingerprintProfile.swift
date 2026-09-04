@@ -619,6 +619,13 @@ extension FingerprintProfile {
             p.name = "\(p.name) #\(String(p.seed % 10000).leftPadded(to: 4))"
             return p
         }
+        return randomMacSafari(locale: loc)
+    }
+
+    /// Random Mac · Safari desktop identity (WebKit engine, so it matches the real renderer).
+    static func randomMacSafari(locale loc: (lang: String, langs: [String], tz: String)? = nil) -> FingerprintProfile {
+        let loc = loc ?? DevicePools.locales.randomElement()!
+        let s = DevicePools.desktopScreens.randomElement()!
         var p = FingerprintProfile(
             name: "Mac", kind: .safari, deviceName: "MacBook Pro",
             userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15",
@@ -630,6 +637,37 @@ extension FingerprintProfile {
         )
         p.name = "\(p.name) #\(String(p.seed % 10000).leftPadded(to: 4))"
         return p
+    }
+
+    /// The "Desktop site" identity for this profile: a desktop-class device that keeps everything
+    /// that identifies the *person* (seed, locale, time zone, feature toggles) and only swaps the
+    /// device. iPhone identities become Mac · Safari (same WebKit engine); Android becomes Windows · Chrome.
+    func desktopCounterpart() -> FingerprintProfile {
+        var d: FingerprintProfile
+        switch family {
+        case .desktop:
+            return self
+        case .android:
+            d = FingerprintProfile.random(family: .desktop)
+        case .ios:
+            d = FingerprintProfile.randomMacSafari()
+        }
+        d.seed = seed
+        d.language = language
+        d.languages = languages
+        d.timeZone = timeZone
+        d.doNotTrack = doNotTrack
+        d.spoofNavigator = spoofNavigator
+        d.spoofScreen = spoofScreen
+        d.spoofTimezone = spoofTimezone
+        d.spoofWebGL = spoofWebGL
+        d.spoofCanvas = spoofCanvas
+        d.spoofAudio = spoofAudio
+        d.spoofHeaders = spoofHeaders
+        d.uploadSpoof = uploadSpoof
+        d.webrtcPolicy = webrtcPolicy
+        d.name = "\(name) · Desktop"
+        return d
     }
 }
 

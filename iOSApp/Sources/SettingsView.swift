@@ -224,7 +224,7 @@ struct SettingsView: View {
         } header: {
             Text("Screen")
         } footer: {
-            Text("The layout viewport (innerWidth/innerHeight) is left untouched so pages keep rendering correctly.")
+            Text("Phone identities keep the page's own layout viewport. Desktop identities pin the viewport to \(SpoofScript.desktopLayoutWidth) CSS px (like Safari's Request Desktop Website) so sites serve their desktop UI — e.g. Instagram's video uploader.")
         }
         .disabled(!draft.spoofScreen)
     }

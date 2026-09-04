@@ -42,7 +42,27 @@ final class ProfileStore: ObservableObject {
         get { active.profile }
         set {
             guard newValue != active.profile else { return }
-            mutateActive { $0.profile = newValue }
+            // Explicitly choosing an identity ends "Desktop site" mode: the new one is the real identity.
+            mutateActive { $0.profile = newValue; $0.mobileProfileBackup = nil }
+            revision += 1
+        }
+    }
+
+    /// "Desktop site" for the active session: swaps in a desktop-class identity (same seed,
+    /// locale, time zone) and parks the current one so it can be restored exactly.
+    var desktopSite: Bool {
+        get { active.isDesktopSite }
+        set {
+            guard newValue != active.isDesktopSite else { return }
+            mutateActive { s in
+                if newValue {
+                    s.mobileProfileBackup = s.profile
+                    s.profile = s.profile.desktopCounterpart()
+                } else if let original = s.mobileProfileBackup {
+                    s.profile = original
+                    s.mobileProfileBackup = nil
+                }
+            }
             revision += 1
         }
     }

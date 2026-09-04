@@ -16,7 +16,6 @@ struct BrowserView: View {
     @State private var urlText = ""
     @State private var showSettings = false
     @State private var showSessions = false
-    @State private var showIGBridge = false
     @State private var toast: String?
     @FocusState private var urlFocused: Bool
 
@@ -81,19 +80,6 @@ struct BrowserView: View {
                 if id != store.activeID { store.setActive(id) }
             })
             .environmentObject(store)
-        }
-        .sheet(isPresented: $showIGBridge) {
-            InstagramBridgeView(
-                currentURL: model.currentURL,
-                exportCookies: { done in model.exportCookies(completion: done) },
-                importCookies: { cookies in
-                    model.restoreCookies(cookies) { count in
-                        if !store.privateMode { snapshotNow() }
-                        model.load("https://www.instagram.com/")
-                        showToast(count > 0 ? "\(count) Instagram cookies set" : "No cookies set")
-                    }
-                }
-            )
         }
     }
 
@@ -185,12 +171,10 @@ struct BrowserView: View {
                     Label("Re-roll canvas/audio noise", systemImage: "waveform.path")
                 }
                 Divider()
-                Button {
-                    showIGBridge = true
-                } label: {
-                    Label("Instagram bridge…", systemImage: "arrow.left.arrow.right.circle")
+                Toggle(isOn: desktopSiteBinding) {
+                    Label("Desktop site", systemImage: "desktopcomputer.and.arrow.down")
                 }
-                Divider()
+                .disabled(store.profile.isDesktopLike && !store.desktopSite)
                 Toggle(isOn: $store.privateMode) {
                     Label("Private mode (no persistent data)", systemImage: "eyeglasses")
                 }
@@ -233,6 +217,17 @@ struct BrowserView: View {
         .padding(.top, 2)
         .background(Color(.systemBackground))
         .overlay(Divider(), alignment: .top)
+    }
+
+    /// On when the session is temporarily desktop, or when its own identity is already desktop-class.
+    private var desktopSiteBinding: Binding<Bool> {
+        Binding(
+            get: { store.desktopSite || store.profile.isDesktopLike },
+            set: { on in
+                store.desktopSite = on
+                showToast(on ? "Desktop site · \(store.profile.deviceLabel)" : "Mobile site · \(store.profile.deviceLabel)")
+            }
+        )
     }
 
     private func barButton(_ icon: String, enabled: Bool, action: @escaping () -> Void) -> some View {

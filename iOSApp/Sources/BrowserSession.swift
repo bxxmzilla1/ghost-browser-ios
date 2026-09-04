@@ -72,7 +72,11 @@ struct BrowserSession: Codable, Equatable, Identifiable {
     var lastURL: String = ""
     var createdAt: Date = Date()
     var updatedAt: Date = Date()
+    /// While "Desktop site" is on, the original (mobile) identity is parked here so it can be
+    /// restored exactly. Optional so sessions saved before this field existed still decode.
+    var mobileProfileBackup: FingerprintProfile?
 
+    var isDesktopSite: Bool { mobileProfileBackup != nil }
     var deviceLabel: String { profile.deviceLabel }
     var proxyLabel: String { proxy?.label ?? "direct" }
 
@@ -197,15 +201,17 @@ struct SessionsXPayload: Codable {
         version = 3
         uid = s.uid
         exportedAt = ISO8601DateFormatter().string(from: Date())
+        // Export the session's real identity, not the temporary "Desktop site" one.
+        let identity = s.mobileProfileBackup ?? s.profile
         name = s.name
-        label = s.deviceLabel
+        label = identity.deviceLabel
         url = s.lastURL
         proxy = s.proxy?.text
-        spoof = Spoof(device: SessionsXFingerprint(profile: s.profile).device, deviceLabel: s.deviceLabel,
-                      fingerprint: SessionsXFingerprint(profile: s.profile))
+        spoof = Spoof(device: SessionsXFingerprint(profile: identity).device, deviceLabel: identity.deviceLabel,
+                      fingerprint: SessionsXFingerprint(profile: identity))
         cookies = s.cookies
         twofaSecret = ""
-        ghost = Ghost(profile: s.profile, proxy: s.proxy)
+        ghost = Ghost(profile: identity, proxy: s.proxy)
     }
 
     func toSession() -> BrowserSession {

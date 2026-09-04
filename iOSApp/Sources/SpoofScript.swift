@@ -45,7 +45,14 @@ enum SpoofScript {
         /// "allow" | "mask" | "block"
         var webrtc: String
         var uploadSpoof: Bool
+        /// CSS-px layout width forced on pages for desktop identities (nil = leave the page's viewport).
+        var desktopViewport: Int?
     }
+
+    /// Layout viewport used for desktop identities. WKWebView's desktop content mode does not
+    /// override `width=device-width` (Safari does that with a private preference), so the page
+    /// would otherwise still lay out at phone width and serve its phone UI.
+    static let desktopLayoutWidth = 1280
 
     static func source(for p: FingerprintProfile) -> String {
         let rtc: String
@@ -54,7 +61,8 @@ enum SpoofScript {
         case .maskLocal: rtc = "mask"
         case .block: rtc = "block"
         }
-        var cfg = Config(canvas: p.spoofCanvas, audio: p.spoofAudio, seed: p.seed, webrtc: rtc, uploadSpoof: p.uploadSpoof)
+        var cfg = Config(canvas: p.spoofCanvas, audio: p.spoofAudio, seed: p.seed, webrtc: rtc, uploadSpoof: p.uploadSpoof,
+                         desktopViewport: p.isDesktopLike ? desktopLayoutWidth : nil)
         if p.spoofNavigator {
             cfg.navigator = Config.Navigator(
                 userAgent: p.userAgent,
@@ -317,7 +325,53 @@ enum SpoofScript {
         remove(window.Document && window.Document.prototype, k);
         remove(window.Element && window.Element.prototype, k);
       });
+      // iOS-WebKit-only surface that desktop browsers never expose; Meta's mobile detection
+      // keys on these even when the UA says desktop.
+      ['orientation', 'onorientationchange'].forEach(function (k) {
+        remove(window, k);
+        remove(window.Window && window.Window.prototype, k);
+      });
+      remove(N && N.prototype, 'standalone'); remove(nav, 'standalone');
     }
+  }
+
+  // ---------- desktop layout viewport ----------
+  // Pin <meta name=viewport> to a desktop width so responsive sites take their wide breakpoint
+  // (WebKit honours live viewport meta changes; the page is scaled to fit and stays zoomable).
+  if (cfg.desktopViewport && window === window.top) {
+    var VIEWPORT = 'width=' + cfg.desktopViewport + ', user-scalable=yes';
+    var pinning = false;
+    function pinViewport() {
+      if (pinning) return;
+      pinning = true;
+      try {
+        var head = document.head || document.documentElement;
+        var metas = document.querySelectorAll('meta[name="viewport" i]');
+        if (metas.length === 0) {
+          if (head) { var m = document.createElement('meta'); m.setAttribute('name', 'viewport'); m.setAttribute('content', VIEWPORT); head.appendChild(m); }
+        } else {
+          for (var i = 0; i < metas.length; i++) {
+            if (i === 0) { if (metas[i].getAttribute('content') !== VIEWPORT) metas[i].setAttribute('content', VIEWPORT); }
+            else if (metas[i].parentNode) metas[i].parentNode.removeChild(metas[i]);
+          }
+        }
+      } catch (e) {}
+      pinning = false;
+    }
+    pinViewport();
+    try {
+      new MutationObserver(function (muts) {
+        for (var i = 0; i < muts.length; i++) {
+          var mu = muts[i];
+          if (mu.type === 'attributes') { if (mu.target && /^viewport$/i.test(mu.target.getAttribute('name') || '')) { pinViewport(); return; } continue; }
+          for (var j = 0; j < mu.addedNodes.length; j++) {
+            var nd = mu.addedNodes[j];
+            if (nd.nodeType === 1 && (nd.tagName === 'META' || nd.tagName === 'HEAD' || nd.tagName === 'HTML')) { pinViewport(); return; }
+          }
+        }
+      }).observe(document.documentElement || document, { childList: true, subtree: true, attributes: true, attributeFilter: ['content', 'name'] });
+    } catch (e) {}
+    document.addEventListener('DOMContentLoaded', pinViewport, true);
   }
 
   // ---------- screen ----------

@@ -9,6 +9,18 @@ enum InstagramBridge {
 
     static let queriedSchemes = ["instagram", "instagram-stories"]
 
+    /// Automatic hand-off channel to the sideloaded Instagram (GhostTweak). GhostBrowser writes a
+    /// marked token block to the *general* pasteboard (the only reliably cross-app channel on
+    /// non-jailbroken iOS) and launches the app; GhostTweak reads it on foreground, imports the
+    /// tokens and injects the cookies — no manual paste. The marker must match GhostTweak's
+    /// `GhostBridgeMarker` exactly.
+    static let bridgeMarker = "GHOSTBRIDGE/1"
+
+    /// The exact string written to the pasteboard for the auto-import: marker line + token block.
+    static func bridgePayload(for session: Session) -> String {
+        bridgeMarker + "\n" + session.tokenBlock
+    }
+
     static func isInstagram(_ url: URL?) -> Bool {
         guard let host = url?.host?.lowercased() else { return false }
         return host == "instagram.com" || host.hasSuffix(".instagram.com")

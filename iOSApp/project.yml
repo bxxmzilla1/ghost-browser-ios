@@ -25,6 +25,9 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+        LSApplicationQueriesSchemes:
+          - instagram
+          - instagram-stories
         NSAppTransportSecurity:
           NSAllowsArbitraryLoadsInWebContent: true
         NSCameraUsageDescription: Websites may request the camera for photo or video capture.

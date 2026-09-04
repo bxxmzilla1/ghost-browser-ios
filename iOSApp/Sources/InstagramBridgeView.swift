@@ -53,6 +53,15 @@ struct InstagramBridgeView: View {
 
     private var openSection: some View {
         Section {
+            Button {
+                sendToInstagramApp()
+            } label: {
+                Label(session.hasLogin ? "Send login to Instagram app" : "Log in first to send",
+                      systemImage: "paperplane.fill")
+                .font(.body.weight(.semibold))
+            }
+            .disabled(!session.hasLogin)
+
             ForEach(deepLinks) { link in
                 Button {
                     open(link.url)
@@ -63,7 +72,22 @@ struct InstagramBridgeView: View {
         } header: {
             Text("Open in Instagram app")
         } footer: {
-            Text("Launches the sideloaded Instagram (with its Blaze spoofing). If nothing happens, the app isn't installed — sideload IG IPA/Instagram.ipa first.")
+            Text("“Send login” hands the current web login to the sideloaded Instagram automatically: it copies the tokens to the shared clipboard and launches the app, where GhostTweak imports them on open (iOS may show a one-time “pasted from GhostBrowser” banner). If nothing happens, the app isn’t installed — sideload the patched Instagram-Ghost.ipa first.")
+        }
+    }
+
+    private func sendToInstagramApp() {
+        refresh()
+        // refresh() is async (cookie snapshot); give it a beat, then rebuild from fresh cookies.
+        exportCookies { cookies in
+            let s = InstagramBridge.session(from: cookies)
+            session = s
+            guard s.hasLogin else { showToast("No Instagram login in this session"); return }
+            UIPasteboard.general.string = InstagramBridge.bridgePayload(for: s)
+            guard let url = URL(string: "instagram://app") else { return }
+            UIApplication.shared.open(url, options: [:]) { ok in
+                showToast(ok ? "Sent — opening Instagram…" : "Instagram app not installed")
+            }
         }
     }
 

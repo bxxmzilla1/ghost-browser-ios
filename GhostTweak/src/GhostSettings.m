@@ -4,6 +4,7 @@
 
 extern NSString *GhostClearAppData(BOOL includeKeychain);
 extern void GhostCloseApp(void);
+extern BOOL GhostConsumeBridgeForced(BOOL force);
 
 @interface GhostSettingsController : UITableViewController
 @property (nonatomic, strong) UITextView *pasteView;
@@ -24,7 +25,7 @@ extern void GhostCloseApp(void);
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     switch (section) {
         case 0: return 2;
-        case 1: return 4;
+        case 1: return 5;
         case 2: return 1;
         case 3: return 2;   // Reset: clear data / clear data + keychain
         case 4: return 1;   // Status
@@ -76,8 +77,9 @@ extern void GhostCloseApp(void);
         if (indexPath.row == 0) cell.textLabel.text = @"Import from paste field";
         else if (indexPath.row == 1) cell.textLabel.text = @"Paste from clipboard";
         else if (indexPath.row == 2) cell.textLabel.text = @"Copy token block";
-        else cell.textLabel.text = @"Generate missing device IDs";
-        if (indexPath.row == 0) cell.textLabel.textColor = self.view.tintColor;
+        else if (indexPath.row == 3) cell.textLabel.text = @"Generate missing device IDs";
+        else cell.textLabel.text = @"Import login from GhostBrowser";
+        if (indexPath.row == 0 || indexPath.row == 4) cell.textLabel.textColor = self.view.tintColor;
         return cell;
     }
     if (indexPath.section == 2) {
@@ -127,9 +129,14 @@ extern void GhostCloseApp(void);
         } else if (indexPath.row == 2) {
             [UIPasteboard generalPasteboard].string = [t textBlock];
             [self alert:@"Copied" msg:@"Token block on clipboard."];
-        } else {
+        } else if (indexPath.row == 3) {
             [t fillMissingGeneratedIDs];
             [self alert:@"Generated" msg:@"Empty device IDs filled."];
+        } else {
+            if (!GhostConsumeBridgeForced(YES)) {
+                [self alert:@"Nothing to import"
+                        msg:@"No GhostBrowser login on the clipboard. In GhostBrowser: Instagram bridge → Send login to Instagram app, then return here."];
+            }
         }
         [self.tableView reloadData];
     } else if (indexPath.section == 3) {

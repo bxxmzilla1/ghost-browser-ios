@@ -14,7 +14,7 @@ CFLAGS := -arch arm64 \
 
 LDFLAGS := -framework Foundation -framework UIKit -framework CFNetwork -framework WebKit -framework Security
 
-SRCS := src/GhostTweak.m src/GhostTokenStore.m src/GhostHooks.m src/GhostSettings.m src/GhostAppData.m
+SRCS := src/GhostTweak.m src/GhostTokenStore.m src/GhostHooks.m src/GhostSettings.m src/GhostAppData.m src/GhostBridge.m
 
 .PHONY: all clean
 

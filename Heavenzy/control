@@ -2,8 +2,8 @@ Package: com.heavenzy.tweak
 Name: Heavenzy
 Version: 1.0.0
 Architecture: iphoneos-arm64
-Description: Per-app device spoofer (model, iOS, IDFV, IDFA) with a wipe + re-spoof that clears saved accounts and blocks iCloud restore. Open the in-app panel with a two-finger long-press.
+Description: Per-app device spoofer with a Ghost-style control app (model, iOS, screen, IDFV/IDFA/UDID/serial, carrier, time zone, locale) plus a wipe + re-spoof that clears saved accounts and blocks iCloud restore. Configure apps in the Heavenzy app, or use the in-app panel via a two-finger long-press.
 Maintainer: Heavenzy
 Author: Heavenzy
 Section: Tweaks
-Depends: ellekit
+Depends: ellekit, libsandy

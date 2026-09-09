@@ -38,6 +38,7 @@
 @property (nonatomic, copy) NSString *mnc;             // mobile network code, e.g. "410"
 @property (nonatomic, copy) NSString *isoCountryCode;  // e.g. "us"
 @property (nonatomic, copy) NSString *timeZoneName;    // IANA, e.g. "America/New_York"
+@property (nonatomic, copy) NSString *localeId;        // e.g. "en_US" (NSLocale)
 
 // Floating button position (points, top-left of the 44pt bubble). Negative = not set yet.
 @property (nonatomic, assign) CGPoint floatingOrigin;
@@ -61,5 +62,9 @@
 
 /// Roll a brand-new random iPhone (model + iOS + screen + cores + memory) and fresh IDFV/IDFA. Saves.
 - (void)regenerateIdentity;
+
+/// Apply an identity dictionary in the shared HZDevice schema (model,name,ios,w,h,scale,cores,mem,
+/// idfv,idfa,udid,serial,batteryLevel,batteryCharging,carrierName,mcc,mnc,iso,timeZone,localeId).
+- (void)applyIdentityDict:(NSDictionary *)identity;
 
 @end

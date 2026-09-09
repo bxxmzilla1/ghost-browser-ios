@@ -10,6 +10,7 @@
 #import "GBStore.h"
 #import "GBMenu.h"
 #import "GBFloatingButton.h"
+#import "HZConfig.h"
 
 // Plain-C mirror of the state, read by the ultra-early sysctl/uname/MGCopyAnswer hooks. These run
 // before/around libSystem init and MUST NOT touch Objective-C (a dispatch_once re-entry there
@@ -273,6 +274,19 @@ static CFTypeRef gb_MGCopyAnswer(CFStringRef key) {
 }
 %end
 
+#pragma mark - Locale (region-coherent; pool is en_* so app language is unchanged)
+
+%hook NSLocale
++ (NSLocale *)currentLocale {
+    if (gEnabled) { NSString *l = [GBStore shared].localeId; if (l.length) return [NSLocale localeWithLocaleIdentifier:l]; }
+    return %orig;
+}
++ (NSLocale *)autoupdatingCurrentLocale {
+    if (gEnabled) { NSString *l = [GBStore shared].localeId; if (l.length) return [NSLocale localeWithLocaleIdentifier:l]; }
+    return %orig;
+}
+%end
+
 #pragma mark - Screen (native pixel size + scale, so it matches the spoofed model)
 
 // Only the *pixel-space* getters are spoofed (nativeBounds/nativeScale). The point-space bounds and
@@ -380,8 +394,16 @@ static void GBInstallGesture(void) {
     @autoreleasepool {
         NSLog(@"[Heavenzy] Loading v1.0");
         NSString *bundleID = [[NSBundle mainBundle] bundleIdentifier];
-        // Never touch system processes (SpringBoard, Preferences, daemons using UIKit).
-        if (!bundleID || [bundleID hasPrefix:@"com.apple."]) return;
+        // Never touch system processes (SpringBoard, Preferences, daemons using UIKit) or our own
+        // control app (which links UIKit and would otherwise match the filter).
+        if (!bundleID || [bundleID hasPrefix:@"com.apple."] || [bundleID isEqualToString:@"com.heavenzy.app"]) return;
+
+        // Honour an "Erase App Data" request queued by the Heavenzy control app for this bundle.
+        [HZConfig grantSandboxAccess];
+        if ([HZConfig wipePendingForApp:bundleID]) {
+            [GBMenu clearAppData];
+            [HZConfig setWipePending:NO forApp:bundleID];
+        }
 
         GBStore *store = [GBStore shared];
         gEnabled = store.enabled ? 1 : 0;

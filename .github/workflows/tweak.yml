@@ -45,6 +45,18 @@ jobs:
           cp Heavenzy/packages/*.deb out/
           ls -la out
 
+      - name: Verify package contents (tweak dylib + control app + libSandy profile)
+        run: |
+          set -e
+          deb=$(ls out/*.deb | head -n1)
+          dpkg -c "$deb" | tee contents.txt
+          grep -q 'Library/MobileSubstrate/DynamicLibraries/Heavenzy.dylib' contents.txt
+          grep -q 'Library/MobileSubstrate/DynamicLibraries/Heavenzy.plist' contents.txt
+          grep -q 'Applications/Heavenzy.app/Heavenzy$' contents.txt
+          grep -q 'Applications/Heavenzy.app/Info.plist' contents.txt
+          grep -q 'Library/libSandy/Heavenzy-Profile.plist' contents.txt
+          echo "OK: dylib, filter plist, app binary, Info.plist and libSandy profile all present"
+
       - uses: actions/upload-artifact@v4
         with:
           name: Heavenzy-deb

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Run as a platform (unsandboxed) app so we can read/write /var/mobile/Library/Preferences/Heavenzy
+	     and enumerate installed apps via LSApplicationWorkspace. -->
+	<key>platform-application</key>
+	<true/>
+	<key>com.apple.private.security.no-container</key>
+	<true/>
+	<key>com.apple.private.MobileContainerManager.allowed</key>
+	<true/>
+	<key>com.apple.springboard.launchapplications</key>
+	<true/>
+	<key>com.apple.lsapplicationworkspace.rebuildLaunchServicesDatabase</key>
+	<true/>
+</dict>
+</plist>

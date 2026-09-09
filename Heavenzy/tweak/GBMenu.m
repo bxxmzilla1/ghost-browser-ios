@@ -298,6 +298,8 @@ static UIButton *GBWide(NSString *title, UIColor *bg, UIColor *fg) {
 
 @implementation GBMenu
 
++ (void)clearAppData { GBClearAppData(); }
+
 + (UIViewController *)topVCForWindow:(UIWindow *)window {
     UIViewController *vc = window.rootViewController;
     while (vc.presentedViewController) vc = vc.presentedViewController;

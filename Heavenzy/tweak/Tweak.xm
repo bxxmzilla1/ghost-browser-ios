@@ -1,51 +1,23 @@
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
 #import <CoreFoundation/CoreFoundation.h>
-#import <dlfcn.h>
 #import <string.h>
-#import <errno.h>
-#import <sys/sysctl.h>
-#import <sys/utsname.h>
-#import <substrate.h>
 #import "GBStore.h"
 #import "GBMenu.h"
 #import "GBFloatingButton.h"
 #import "HZConfig.h"
 
-// Plain-C mirror of the identity, read by the ultra-early MGCopyAnswer hook. It runs before/around
-// libSystem init and MUST NOT touch Objective-C (a dispatch_once re-entry there deadlocks), so the
-// values are copied into C buffers once in the constructor.
-//
 // Heavenzy keeps the REAL iPhone (model, screen, CPU, RAM, iOS, carrier, time zone are all left
-// alone) and only resets the per-device identity below, so an app sees a brand-new phone.
-static int                gEnabled = 0;
-static char               gUDID[64] = {0};
-static char               gSerial[32] = {0};
-static char               gWifi[24] = {0};
-static char               gBluetooth[24] = {0};
-static char               gIMEI[20] = {0};
-
-#pragma mark - MobileGestalt (the cross-install hardware identifiers)
-
-// libMobileGestalt is where UniqueDeviceID (UDID), SerialNumber, WifiAddress, BluetoothAddress and
-// the IMEI really come from; they persist across app deletes and iCloud restores, so resetting them
-// here is what makes the phone look brand new. Hooked with MSHookFunction (MGCopyAnswer is private).
-static CFTypeRef (*orig_MGCopyAnswer)(CFStringRef key);
-static CFTypeRef gb_MGCopyAnswer(CFStringRef key) {
-    if (gEnabled && key) {
-        if (gUDID[0] && CFStringCompare(key, CFSTR("UniqueDeviceID"), 0) == kCFCompareEqualTo)
-            return CFStringCreateWithCString(NULL, gUDID, kCFStringEncodingUTF8);   // +1, caller releases
-        if (gSerial[0] && CFStringCompare(key, CFSTR("SerialNumber"), 0) == kCFCompareEqualTo)
-            return CFStringCreateWithCString(NULL, gSerial, kCFStringEncodingUTF8);
-        if (gWifi[0] && CFStringCompare(key, CFSTR("WifiAddress"), 0) == kCFCompareEqualTo)
-            return CFStringCreateWithCString(NULL, gWifi, kCFStringEncodingUTF8);
-        if (gBluetooth[0] && CFStringCompare(key, CFSTR("BluetoothAddress"), 0) == kCFCompareEqualTo)
-            return CFStringCreateWithCString(NULL, gBluetooth, kCFStringEncodingUTF8);
-        if (gIMEI[0] && CFStringCompare(key, CFSTR("InternationalMobileEquipmentIdentity"), 0) == kCFCompareEqualTo)
-            return CFStringCreateWithCString(NULL, gIMEI, kCFStringEncodingUTF8);
-    }
-    return orig_MGCopyAnswer ? orig_MGCopyAnswer(key) : NULL;
-}
+// alone) and only resets the per-device identity, so an app sees a brand-new phone.
+//
+// NOTE: we do NOT hook the private C function MGCopyAnswer. Doing so requires an inline (function)
+// hook, which activates ellekit's Mach exception handler; in apps that ship their own crash reporter
+// (Instagram/Facebook use Breakpad) the two exception handlers collide and the kernel kills the app
+// with EXC_GUARD (ILLEGAL_MOVE on a mach port) on launch. It's also unnecessary: on stock iOS the
+// serial / UDID / Wi-Fi MAC / IMEI MobileGestalt keys are entitlement-gated and already return null
+// to sandboxed apps, so a normal phone never exposes them. IDFV/IDFA (below, plain Obj-C swizzles)
+// plus the data wipe are what actually make an app treat the device as brand new.
+static int gEnabled = 0;
 
 #pragma mark - Block iCloud (so wiped accounts can't be restored from the cloud)
 
@@ -249,21 +221,13 @@ static void GBInstallGesture(void) {
         gEnabled = store.enabled ? 1 : 0;
         if (gEnabled) {
             if (!store.hasIdentity) [store regenerateIdentity];
-            const char *u = store.udid.UTF8String;         if (u) strlcpy(gUDID, u, sizeof(gUDID));
-            const char *s = store.serialNumber.UTF8String; if (s) strlcpy(gSerial, s, sizeof(gSerial));
-            const char *w = store.wifiAddress.UTF8String;  if (w) strlcpy(gWifi, w, sizeof(gWifi));
-            const char *b = store.bluetoothAddress.UTF8String; if (b) strlcpy(gBluetooth, b, sizeof(gBluetooth));
-            const char *im = store.imei.UTF8String;        if (im) strlcpy(gIMEI, im, sizeof(gIMEI));
             NSLog(@"[Heavenzy] Active in %@ → %@", bundleID, store.summary);
         }
 
+        // Only Objective-C method swizzles below (IDFV/IDFA/name/DeviceCheck/iCloud). No inline C
+        // hooks — that's what avoids ellekit's exception handler colliding with the app's crash
+        // reporter (the EXC_GUARD launch crash on Instagram/Facebook).
         %init;
-
-        // MobileGestalt is only worth hooking when we actually have identifiers to serve.
-        if (gEnabled && (gUDID[0] || gSerial[0] || gWifi[0] || gBluetooth[0] || gIMEI[0])) {
-            void *mg = dlsym(RTLD_DEFAULT, "MGCopyAnswer");
-            if (mg) MSHookFunction(mg, (void *)gb_MGCopyAnswer, (void **)&orig_MGCopyAnswer);
-        }
 
         // The menu is always available (even when spoofing is off) so the user can opt this app in.
         [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidBecomeActiveNotification

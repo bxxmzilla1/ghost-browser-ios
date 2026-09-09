@@ -1,0 +1,51 @@
+name: tweak
+
+on:
+  push:
+    paths:
+      - 'GhostBlaze/**'
+      - '.github/workflows/tweak.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          brew install ldid dpkg make
+          echo "$(brew --prefix make)/libexec/gnubin" >> "$GITHUB_PATH"
+
+      - name: Set up Theos
+        run: |
+          export THEOS=$HOME/theos
+          echo "THEOS=$THEOS" >> "$GITHUB_ENV"
+          git clone --quiet --recursive https://github.com/theos/theos.git "$THEOS"
+
+      - name: Fetch iOS SDK (sparse)
+        run: |
+          set -e
+          git clone -n --depth=1 --filter=tree:0 https://github.com/theos/sdks.git "$THEOS/sdks"
+          cd "$THEOS/sdks"
+          git sparse-checkout set --no-cone iPhoneOS16.5.sdk
+          git checkout
+          ls -1 "$THEOS/sdks"
+
+      - name: Build rootless .deb
+        run: |
+          cd GhostBlaze
+          make package THEOS_PACKAGE_SCHEME=rootless FINALPACKAGE=1
+
+      - name: Collect package
+        run: |
+          mkdir -p out
+          cp GhostBlaze/packages/*.deb out/
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GhostBlaze-deb
+          path: out/*.deb
+          if-no-files-found: error

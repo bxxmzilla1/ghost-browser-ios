@@ -10,6 +10,12 @@ iOSApp/*.ipa
 iOSApp/*.xcodeproj
 iOSApp/Info.plist
 
+# Theos tweak build outputs
+GhostBlaze/.theos/
+GhostBlaze/packages/
+GhostBlaze/obj/
+*.deb
+
 # OS junk
 .DS_Store
 Thumbs.db

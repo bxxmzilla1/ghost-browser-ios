@@ -1,7 +1,7 @@
 #import <Foundation/Foundation.h>
 
 /// Per-app spoofed device identity. Persisted inside the *host app's own* container
-/// (Library/Preferences/com.ghost.blaze.plist) so it is stable across normal relaunches and
+/// (Library/Preferences/com.heavenzy.plist) so it is stable across normal relaunches and
 /// disappears on a full data wipe — at which point "wipe + re-spoof" writes a fresh one.
 @interface GBStore : NSObject
 

@@ -118,13 +118,10 @@ static UIColor *GBSubtle(void)  { return [UIColor colorWithWhite:0.64 alpha:1.0]
     self.enableSwitch.on = store.enabled;
     [self.enableSwitch addTarget:self action:@selector(enableChanged) forControlEvents:UIControlEventValueChanged];
 
-    UIButton *apply = [self wideButton:@"Apply & Reopen" color:GBAccent() textColor:UIColor.whiteColor];
-    [apply addTarget:self action:@selector(applyTapped) forControlEvents:UIControlEventTouchUpInside];
-    UIButton *wipe = [self wideButton:@"Wipe data + re-spoof" color:[UIColor colorWithRed:0.22 green:0.13 blue:0.13 alpha:1.0]
-                            textColor:[UIColor colorWithRed:1.0 green:0.42 blue:0.4 alpha:1.0]];
+    UIButton *wipe = [self wideButton:@"Wipe data + re-spoof" color:GBAccent() textColor:UIColor.whiteColor];
     [wipe addTarget:self action:@selector(wipeTapped) forControlEvents:UIControlEventTouchUpInside];
 
-    UILabel *foot = [self label:@"“Wipe + re-spoof” deletes this app's data, saved logins, cookies and keychain (incl. iCloud) and rolls a new device. iCloud is blocked while spoofing is on, so old accounts can't sync back. Changes apply when the app reopens."
+    UILabel *foot = [self label:@"Deletes this app's data, saved logins, cookies and keychain (incl. iCloud), applies the device shown above and reopens the app as a fresh install. Tap Randomize first to roll a different device. iCloud is blocked while spoofing is on, so old accounts can't sync back."
                            size:11 weight:UIFontWeightRegular color:GBSubtle()];
     foot.numberOfLines = 0;
 
@@ -141,7 +138,7 @@ static UIColor *GBSubtle(void)  { return [UIColor colorWithWhite:0.64 alpha:1.0]
         [self spacer:8],
         enableRow,
         [self spacer:4],
-        apply, wipe, foot
+        wipe, foot
     ]];
     body.axis = UILayoutConstraintAxisVertical;
     body.spacing = 8;
@@ -182,7 +179,6 @@ static UIColor *GBSubtle(void)  { return [UIColor colorWithWhite:0.64 alpha:1.0]
         [body.trailingAnchor constraintEqualToAnchor:self.card.trailingAnchor constant:-18],
         [body.bottomAnchor constraintEqualToAnchor:self.card.bottomAnchor constant:-18],
 
-        [apply.heightAnchor constraintEqualToConstant:46],
         [wipe.heightAnchor constraintEqualToConstant:46],
     ]];
 }
@@ -242,21 +238,19 @@ static UIColor *GBSubtle(void)  { return [UIColor colorWithWhite:0.64 alpha:1.0]
     store.enabled = self.enableSwitch.on;
 }
 
-- (void)applyTapped {
-    [self dismissViewControllerAnimated:YES completion:^{ GBQuit(); }];
-}
-
 - (void)wipeTapped {
-    UIAlertController *c = [UIAlertController alertControllerWithTitle:@"Wipe this app?"
-        message:@"Deletes this app's data, saved logins, cookies, web data and keychain (including iCloud-synced items), then rolls a brand-new device. The app closes — reopen it as a fresh, spoofed install with no previous accounts."
+    GBStore *store = [GBStore shared];
+    if (!store.hasIdentity) { [store regenerateIdentity]; self.deviceValue.text = store.summary; }
+
+    UIAlertController *c = [UIAlertController alertControllerWithTitle:@"Wipe + re-spoof?"
+        message:[NSString stringWithFormat:@"Deletes this app's data, saved logins, cookies, web data and keychain (including iCloud-synced items), applies “%@” and reopens the app as a fresh install with no previous accounts.", store.summary]
         preferredStyle:UIAlertControllerStyleAlert];
     [c addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [c addAction:[UIAlertAction actionWithTitle:@"Wipe + re-spoof" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *x) {
-        GBStore *store = [GBStore shared];
-        store.enabled = YES;              // stay opted-in after the wipe
-        GBClearAppData();
-        [store regenerateIdentity];       // rewrites the identity plist (enabled + new device)
-        GBQuit();
+        store.enabled = YES;   // stay opted-in after the wipe
+        GBClearAppData();      // this also deletes our own plist inside the app container…
+        [store save];          // …so rewrite it with the device shown in the panel (from Randomize)
+        GBQuit();              // reopen → fresh install with that identity
     }]];
     [self presentViewController:c animated:YES completion:nil];
 }

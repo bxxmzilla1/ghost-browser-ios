@@ -1,5 +1,6 @@
 #import "GBMenu.h"
 #import "GBStore.h"
+#import "GBTokens.h"
 #import <WebKit/WebKit.h>
 #import <Security/Security.h>
 
@@ -171,9 +172,20 @@ static UIButton *GBWide(NSString *title, UIColor *bg, UIColor *fg) {
                             11, UIFontWeightRegular, GBSubtle());
     foot.numberOfLines = 0;
 
-    UIStackView *body = [[UIStackView alloc] initWithArrangedSubviews:@[
+    NSMutableArray *rows = [@[
         GBLabel(@"SPOOFED DEVICE", 11, UIFontWeightSemibold, GBSubtle()), deviceRow, self.detail,
-        GBSpacer(8), enableRow, GBSpacer(4), wipe, foot ]];
+        GBSpacer(8), enableRow, GBSpacer(4) ] mutableCopy];
+
+    // Instagram-only: export the saved auth headers (Authorization / IG-U-DS-USER-ID / X-MID /
+    // X-IG-WWW-Claim) to the clipboard, like the "InstagramJailed" tweak.
+    if ([[[NSBundle mainBundle] bundleIdentifier] isEqualToString:@"com.burbn.instagram"]) {
+        UIButton *token = GBWide(@"Copy Instagram token", GBFieldBG(), GBAccent());
+        [token addTarget:self action:@selector(copyTokenTapped) forControlEvents:UIControlEventTouchUpInside];
+        [rows addObject:token];
+    }
+
+    [rows addObjectsFromArray:@[ wipe, foot ]];
+    UIStackView *body = [[UIStackView alloc] initWithArrangedSubviews:rows];
     body.axis = UILayoutConstraintAxisVertical; body.spacing = 8;
     body.translatesAutoresizingMaskIntoConstraints = NO;
     [body setCustomSpacing:16 afterView:self.detail];
@@ -211,9 +223,11 @@ static UIButton *GBWide(NSString *title, UIColor *bg, UIColor *fg) {
 - (NSString *)detailText {
     GBStore *s = [GBStore shared];
     if (!s.hasIdentity) return @"";
-    return [NSString stringWithFormat:@"%@ · %ld×%ld px @%ldx · %ld cores · %ld GB",
+    return [NSString stringWithFormat:@"%@ · %ld×%ld px @%ldx · %ld cores · %ld GB\n%@ · %@ · battery %d%%%@",
             s.deviceModel, (long)s.nativePixelsW, (long)s.nativePixelsH,
-            (long)s.scaleFactor, (long)s.cpuCores, (long)s.memoryGB];
+            (long)s.scaleFactor, (long)s.cpuCores, (long)s.memoryGB,
+            s.carrierName ?: @"—", s.timeZoneName ?: @"—",
+            (int)(s.batteryLevel * 100), s.batteryCharging ? @" ⚡" : @""];
 }
 
 #pragma mark Actions
@@ -239,6 +253,26 @@ static UIButton *GBWide(NSString *title, UIColor *bg, UIColor *fg) {
         self.detail.text = [self detailText];
     }
     store.enabled = self.enableSwitch.on;
+}
+
+- (void)copyTokenTapped {
+    NSString *blob = [GBTokens instagramTokenBlob];
+    if (blob.length == 0) {
+        UIAlertController *a = [UIAlertController alertControllerWithTitle:@"No token data"
+            message:@"There's no Instagram token stored right now — log in first, then try again."
+            preferredStyle:UIAlertControllerStyleAlert];
+        [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+        [self presentViewController:a animated:YES completion:nil];
+        return;
+    }
+    UIPasteboard.generalPasteboard.string = blob;
+    NSInteger accounts = [blob componentsSeparatedByString:@"\n"].count;
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Copied"
+        message:[NSString stringWithFormat:@"%ld account%@ copied to the clipboard (Authorization, IG-U-DS-USER-ID, X-MID, X-IG-WWW-Claim).",
+                 (long)accounts, accounts == 1 ? @"" : @"s"]
+        preferredStyle:UIAlertControllerStyleAlert];
+    [a addAction:[UIAlertAction actionWithTitle:@"Done" style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:a animated:YES completion:nil];
 }
 
 - (void)wipeTapped {

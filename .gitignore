@@ -23,3 +23,5 @@ Thumbs.db
 # Local installer, do not commit (over GitHub 100MB limit)
 Camoufox Panel Setup*.exe
 *.exe
+
+*.dylib

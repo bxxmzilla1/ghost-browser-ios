@@ -1,19 +1,23 @@
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
+#import <CoreFoundation/CoreFoundation.h>
 #import <dlfcn.h>
 #import <string.h>
 #import <errno.h>
 #import <sys/sysctl.h>
 #import <sys/utsname.h>
+#import <substrate.h>
 #import "GBStore.h"
 #import "GBMenu.h"
 #import "GBFloatingButton.h"
 
-// Plain-C mirror of the state, read by the ultra-early sysctl/uname hooks. These run before/around
-// libSystem init and MUST NOT touch Objective-C (a dispatch_once re-entry there deadlocks), so the
-// spoofed model is copied into a C buffer once in the constructor and the hooks only read it.
+// Plain-C mirror of the state, read by the ultra-early sysctl/uname/MGCopyAnswer hooks. These run
+// before/around libSystem init and MUST NOT touch Objective-C (a dispatch_once re-entry there
+// deadlocks), so the spoofed values are copied into C buffers once in the constructor.
 static int                gEnabled = 0;
 static char               gModel[64] = {0};
+static char               gUDID[64] = {0};
+static char               gSerial[32] = {0};
 static int32_t            gCores = 0;     // hw.ncpu / processorCount
 static int64_t            gMem   = 0;     // hw.memsize (bytes)
 
@@ -64,6 +68,22 @@ static int GBCopyInt(void *oldp, size_t *oldlenp, const void *val, size_t vlen) 
         strlcpy(buf->machine, gModel, sizeof(buf->machine));
     }
     return r;
+}
+
+#pragma mark - MobileGestalt (UDID + serial — the cross-install hardware identifiers)
+
+// libMobileGestalt is where UniqueDeviceID (UDID) and SerialNumber really come from; they persist
+// across app deletes and iCloud restores, so spoofing them here is what breaks a "we've seen this
+// hardware before" match. Hooked with MSHookFunction because MGCopyAnswer is a private symbol.
+static CFTypeRef (*orig_MGCopyAnswer)(CFStringRef key);
+static CFTypeRef gb_MGCopyAnswer(CFStringRef key) {
+    if (gEnabled && key) {
+        if (gUDID[0] && CFStringCompare(key, CFSTR("UniqueDeviceID"), 0) == kCFCompareEqualTo)
+            return CFStringCreateWithCString(NULL, gUDID, kCFStringEncodingUTF8);   // +1, caller releases
+        if (gSerial[0] && CFStringCompare(key, CFSTR("SerialNumber"), 0) == kCFCompareEqualTo)
+            return CFStringCreateWithCString(NULL, gSerial, kCFStringEncodingUTF8);
+    }
+    return orig_MGCopyAnswer ? orig_MGCopyAnswer(key) : NULL;
 }
 
 #pragma mark - Block iCloud (so wiped accounts can't be restored from the cloud)
@@ -155,6 +175,16 @@ static int GBCopyInt(void *oldp, size_t *oldlenp, const void *val, size_t vlen) 
     return u ?: %orig;
 }
 
+- (float)batteryLevel {
+    if (gEnabled) return (float)[GBStore shared].batteryLevel;
+    return %orig;
+}
+- (long long)batteryState {
+    // UIDeviceBatteryState: 1 = unplugged, 2 = charging.
+    if (gEnabled) return [GBStore shared].batteryCharging ? 2 : 1;
+    return %orig;
+}
+
 %end
 
 #pragma mark - IDFA (AdSupport, weak-linked)
@@ -187,6 +217,60 @@ static int GBCopyInt(void *oldp, size_t *oldlenp, const void *val, size_t vlen) 
     return %orig;
 }
 
+// operatingSystemVersion / …String leak the real iOS otherwise. Keep them aligned with UIDevice.
+- (NSOperatingSystemVersion)operatingSystemVersion {
+    if (gEnabled) {
+        NSString *v = [GBStore shared].systemVersion;
+        NSArray<NSString *> *parts = [v componentsSeparatedByString:@"."];
+        if (parts.count >= 1) {
+            NSOperatingSystemVersion o;
+            o.majorVersion = parts.count > 0 ? parts[0].integerValue : 0;
+            o.minorVersion = parts.count > 1 ? parts[1].integerValue : 0;
+            o.patchVersion = parts.count > 2 ? parts[2].integerValue : 0;
+            return o;
+        }
+    }
+    return %orig;
+}
+
+%end
+
+#pragma mark - Carrier (CoreTelephony, weak-linked)
+
+%hook CTCarrier
+- (NSString *)carrierName {
+    if (gEnabled) { NSString *v = [GBStore shared].carrierName; if (v.length) return v; }
+    return %orig;
+}
+- (NSString *)mobileCountryCode {
+    if (gEnabled) { NSString *v = [GBStore shared].mcc; if (v.length) return v; }
+    return %orig;
+}
+- (NSString *)mobileNetworkCode {
+    if (gEnabled) { NSString *v = [GBStore shared].mnc; if (v.length) return v; }
+    return %orig;
+}
+- (NSString *)isoCountryCode {
+    if (gEnabled) { NSString *v = [GBStore shared].isoCountryCode; if (v.length) return v; }
+    return %orig;
+}
+%end
+
+#pragma mark - Time zone (kept region-coherent with the carrier; never changes app language)
+
+%hook NSTimeZone
++ (NSTimeZone *)systemTimeZone {
+    if (gEnabled) { NSString *n = [GBStore shared].timeZoneName; NSTimeZone *z = n.length ? [NSTimeZone timeZoneWithName:n] : nil; if (z) return z; }
+    return %orig;
+}
++ (NSTimeZone *)localTimeZone {
+    if (gEnabled) { NSString *n = [GBStore shared].timeZoneName; NSTimeZone *z = n.length ? [NSTimeZone timeZoneWithName:n] : nil; if (z) return z; }
+    return %orig;
+}
++ (NSTimeZone *)defaultTimeZone {
+    if (gEnabled) { NSString *n = [GBStore shared].timeZoneName; NSTimeZone *z = n.length ? [NSTimeZone timeZoneWithName:n] : nil; if (z) return z; }
+    return %orig;
+}
 %end
 
 #pragma mark - Screen (native pixel size + scale, so it matches the spoofed model)
@@ -305,12 +389,22 @@ static void GBInstallGesture(void) {
             if (!store.hasIdentity) [store regenerateIdentity];
             const char *m = store.deviceModel.UTF8String;
             if (m) strlcpy(gModel, m, sizeof(gModel));
+            const char *u = store.udid.UTF8String;
+            if (u) strlcpy(gUDID, u, sizeof(gUDID));
+            const char *s = store.serialNumber.UTF8String;
+            if (s) strlcpy(gSerial, s, sizeof(gSerial));
             gCores = (int32_t)store.cpuCores;
             gMem   = (int64_t)store.memoryBytes;
             NSLog(@"[Heavenzy] Active in %@ → %@", bundleID, store.summary);
         }
 
         %init;
+
+        // MobileGestalt is only worth hooking when we actually have spoofed values to serve.
+        if (gEnabled && (gUDID[0] || gSerial[0])) {
+            void *mg = dlsym(RTLD_DEFAULT, "MGCopyAnswer");
+            if (mg) MSHookFunction(mg, (void *)gb_MGCopyAnswer, (void **)&orig_MGCopyAnswer);
+        }
 
         // The menu is always available (even when spoofing is off) so the user can opt this app in.
         [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidBecomeActiveNotification

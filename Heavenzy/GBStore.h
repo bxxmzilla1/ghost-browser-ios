@@ -27,6 +27,17 @@
 // Spoofed identifiers.
 @property (nonatomic, copy) NSString *idfv;            // identifierForVendor (UPPERCASE UUID)
 @property (nonatomic, copy) NSString *idfa;            // advertisingIdentifier (UPPERCASE UUID)
+@property (nonatomic, copy) NSString *udid;            // MobileGestalt UniqueDeviceID
+@property (nonatomic, copy) NSString *serialNumber;    // MobileGestalt SerialNumber
+
+// Extended device signals (Ghost-style), each consistent with the chosen identity / region.
+@property (nonatomic, assign) double  batteryLevel;    // 0.0–1.0
+@property (nonatomic, assign) BOOL    batteryCharging; // charging vs unplugged
+@property (nonatomic, copy) NSString *carrierName;     // e.g. "AT&T"
+@property (nonatomic, copy) NSString *mcc;             // mobile country code, e.g. "310"
+@property (nonatomic, copy) NSString *mnc;             // mobile network code, e.g. "410"
+@property (nonatomic, copy) NSString *isoCountryCode;  // e.g. "us"
+@property (nonatomic, copy) NSString *timeZoneName;    // IANA, e.g. "America/New_York"
 
 // Floating button position (points, top-left of the 44pt bubble). Negative = not set yet.
 @property (nonatomic, assign) CGPoint floatingOrigin;

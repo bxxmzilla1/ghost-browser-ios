@@ -1,4 +1,5 @@
 #import "GBStore.h"
+#import <string.h>
 
 static NSString *GBPrefsPath(void) {
     // Inside the host app's sandbox — always writable, no cross-container sandbox issue.
@@ -28,6 +29,15 @@ static NSString *GBPrefsPath(void) {
     _memoryGB      = [d[@"memoryGB"] integerValue];
     _idfv          = [d[@"idfv"] copy];
     _idfa          = [d[@"idfa"] copy];
+    _udid          = [d[@"udid"] copy];
+    _serialNumber  = [d[@"serial"] copy];
+    _batteryLevel    = d[@"batteryLevel"] ? [d[@"batteryLevel"] doubleValue] : 0.72;
+    _batteryCharging = [d[@"batteryCharging"] boolValue];
+    _carrierName   = [d[@"carrierName"] copy];
+    _mcc           = [d[@"mcc"] copy];
+    _mnc           = [d[@"mnc"] copy];
+    _isoCountryCode = [d[@"iso"] copy];
+    _timeZoneName  = [d[@"timeZone"] copy];
     _floatingOrigin = CGPointMake(d[@"floatX"] ? [d[@"floatX"] doubleValue] : -1,
                                   d[@"floatY"] ? [d[@"floatY"] doubleValue] : -1);
 }
@@ -46,6 +56,15 @@ static NSString *GBPrefsPath(void) {
     if (_memoryGB)      d[@"memoryGB"]      = @(_memoryGB);
     if (_idfv)          d[@"idfv"]          = _idfv;
     if (_idfa)          d[@"idfa"]          = _idfa;
+    if (_udid)          d[@"udid"]          = _udid;
+    if (_serialNumber)  d[@"serial"]        = _serialNumber;
+    d[@"batteryLevel"]    = @(_batteryLevel);
+    d[@"batteryCharging"] = @(_batteryCharging);
+    if (_carrierName)   d[@"carrierName"]   = _carrierName;
+    if (_mcc)           d[@"mcc"]           = _mcc;
+    if (_mnc)           d[@"mnc"]           = _mnc;
+    if (_isoCountryCode) d[@"iso"]          = _isoCountryCode;
+    if (_timeZoneName)  d[@"timeZone"]      = _timeZoneName;
     if (_floatingOrigin.x >= 0 && _floatingOrigin.y >= 0) {
         d[@"floatX"] = @(_floatingOrigin.x);
         d[@"floatY"] = @(_floatingOrigin.y);
@@ -119,6 +138,37 @@ static NSString *GBPrefsPath(void) {
 
 static NSString *GBUUIDUpper(void) { return [[NSUUID UUID] UUIDString]; }
 
+static NSString *GBHex(NSUInteger n) {
+    const char *hex = "0123456789ABCDEF";
+    NSMutableString *s = [NSMutableString stringWithCapacity:n];
+    for (NSUInteger i = 0; i < n; i++) [s appendFormat:@"%c", hex[arc4random_uniform(16)]];
+    return s;
+}
+
+static NSString *GBAlnum(NSUInteger n) {
+    const char *set = "ABCDEFGHJKLMNPQRSTUVWXYZ0123456789"; // Apple serials avoid I/O
+    NSMutableString *s = [NSMutableString stringWithCapacity:n];
+    for (NSUInteger i = 0; i < n; i++) [s appendFormat:@"%c", set[arc4random_uniform((uint32_t)strlen(set))]];
+    return s;
+}
+
+// Region rows keep carrier + timezone + ISO country coherent (a US carrier never pairs with a
+// European clock). Kept US-only so the app's language is never flipped.
+// Keys: IANA time zone, carrier name, MCC, MNC, ISO country.
++ (NSArray<NSArray<NSString *> *> *)regionPool {
+    static NSArray *pool; static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        pool = @[
+            @[@"America/New_York",    @"AT&T",     @"310", @"410", @"us"],
+            @[@"America/Chicago",     @"T-Mobile", @"310", @"260", @"us"],
+            @[@"America/Los_Angeles", @"Verizon",  @"311", @"480", @"us"],
+            @[@"America/Denver",      @"AT&T",     @"310", @"410", @"us"],
+            @[@"America/Phoenix",     @"T-Mobile", @"310", @"260", @"us"],
+        ];
+    });
+    return pool;
+}
+
 - (void)regenerateIdentity {
     NSArray<NSDictionary *> *pool = [GBStore devicePool];
     NSDictionary *pick = pool[arc4random_uniform((uint32_t)pool.count)];
@@ -133,10 +183,28 @@ static NSString *GBUUIDUpper(void) { return [[NSUUID UUID] UUIDString]; }
     _deviceName    = @"iPhone";
     _idfv = GBUUIDUpper();
     _idfa = GBUUIDUpper();
+
+    // MobileGestalt identifiers (survive uninstall/iCloud for real devices — spoofing breaks the link).
+    _udid   = [NSString stringWithFormat:@"%@-%@", GBHex(8), GBHex(16)]; // modern A12+ UDID form
+    _serialNumber = GBAlnum(12);
+
+    // Battery: a believable non-round level, usually on battery (not charging).
+    _batteryLevel = (double)(arc4random_uniform(69) + 28) / 100.0;       // 0.28–0.96
+    _batteryCharging = (arc4random_uniform(4) == 0);                     // ~25% charging
+
+    // Region-coherent carrier + time zone.
+    NSArray<NSString *> *region = [GBStore regionPool][arc4random_uniform((uint32_t)[GBStore regionPool].count)];
+    _timeZoneName  = region[0];
+    _carrierName   = region[1];
+    _mcc           = region[2];
+    _mnc           = region[3];
+    _isoCountryCode = region[4];
+
     [self save];
-    NSLog(@"[Heavenzy] New spoofed device: %@ (%@) iOS %@ · %ldx%ld@%ldx · %ld cores · %ld GB",
+    NSLog(@"[Heavenzy] New spoofed device: %@ (%@) iOS %@ · %ldx%ld@%ldx · %ld cores · %ld GB · %@ · %@ · UDID %@",
           _marketingName, _deviceModel, _systemVersion,
-          (long)self.nativePixelsW, (long)self.nativePixelsH, (long)_scaleFactor, (long)_cpuCores, (long)_memoryGB);
+          (long)self.nativePixelsW, (long)self.nativePixelsH, (long)_scaleFactor, (long)_cpuCores, (long)_memoryGB,
+          _carrierName, _timeZoneName, _udid);
 }
 
 @end

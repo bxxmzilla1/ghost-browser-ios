@@ -1,6 +1,5 @@
 #import "HZAppListViewController.h"
 #import "HZAppDetailViewController.h"
-#import "HZPrivate.h"
 #import "HZConfig.h"
 #import "HZDevice.h"
 
@@ -41,12 +40,18 @@ static UIColor *HZAccent(void) { return [UIColor colorWithRed:0.55 green:0.45 bl
 - (void)loadApps {
     NSMutableArray *out = [NSMutableArray array];
     @try {
-        LSApplicationWorkspace *ws = [LSApplicationWorkspace defaultWorkspace];
-        for (LSApplicationProxy *p in [ws allApplications]) {
-            if (![p.applicationType isEqualToString:@"User"]) continue;         // third-party only
-            NSString *bid = p.applicationIdentifier;
+        // Resolve LSApplicationWorkspace at runtime (private class) so we don't have to link the
+        // private framework — that avoids an "Undefined symbols" link error.
+        Class wsClass = NSClassFromString(@"LSApplicationWorkspace");
+        id ws = [wsClass valueForKey:@"defaultWorkspace"];   // +defaultWorkspace
+        NSArray *all = [ws valueForKey:@"allApplications"];  // -allApplications
+        for (id p in all) {
+            NSString *type = [p valueForKey:@"applicationType"];
+            if (![type isEqualToString:@"User"]) continue;                      // third-party only
+            NSString *bid = [p valueForKey:@"applicationIdentifier"];
             if (bid.length == 0 || [bid isEqualToString:@"com.heavenzy.app"]) continue;
-            NSString *name = p.localizedName.length ? p.localizedName : bid;
+            NSString *name = [p valueForKey:@"localizedName"];
+            if (name.length == 0) name = bid;
             [out addObject:@{ @"id": bid, @"name": name }];
         }
     } @catch (__unused NSException *e) {}

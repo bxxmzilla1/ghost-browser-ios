@@ -6,7 +6,7 @@ include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = GhostBlaze
 GhostBlaze_FILES = Tweak.xm GBStore.m GBMenu.m
-GhostBlaze_CFLAGS = -fobjc-arc
+GhostBlaze_CFLAGS = -fobjc-arc -Wno-deprecated-declarations
 GhostBlaze_FRAMEWORKS = UIKit Foundation Security WebKit
 GhostBlaze_WEAK_FRAMEWORKS = AdSupport
 

@@ -3,6 +3,7 @@
 #import <dlfcn.h>
 #import <string.h>
 #import <errno.h>
+#import <sys/sysctl.h>
 #import <sys/utsname.h>
 #import "GBStore.h"
 #import "GBMenu.h"
@@ -96,15 +97,16 @@ static char gModel[64] = {0};
 @end
 
 static void GBInstallGesture(void) {
-    UIWindow *key = nil;
+    UIWindow *key = nil, *anyWindow = nil;
     for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
         if (![scene isKindOfClass:UIWindowScene.class]) continue;
         for (UIWindow *w in ((UIWindowScene *)scene).windows) {
+            if (!anyWindow) anyWindow = w;
             if (w.isKeyWindow) { key = w; break; }
         }
         if (key) break;
     }
-    if (!key) key = UIApplication.sharedApplication.windows.firstObject;
+    if (!key) key = anyWindow;
     if (!key) return;
     // Avoid stacking recognizers if the window becomes active repeatedly.
     for (UIGestureRecognizer *r in key.gestureRecognizers) {

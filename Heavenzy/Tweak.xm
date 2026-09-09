@@ -7,25 +7,52 @@
 #import <sys/utsname.h>
 #import "GBStore.h"
 #import "GBMenu.h"
+#import "GBFloatingButton.h"
 
 // Plain-C mirror of the state, read by the ultra-early sysctl/uname hooks. These run before/around
 // libSystem init and MUST NOT touch Objective-C (a dispatch_once re-entry there deadlocks), so the
 // spoofed model is copied into a C buffer once in the constructor and the hooks only read it.
-static int  gEnabled = 0;
-static char gModel[64] = {0};
+static int                gEnabled = 0;
+static char               gModel[64] = {0};
+static int32_t            gCores = 0;     // hw.ncpu / processorCount
+static int64_t            gMem   = 0;     // hw.memsize (bytes)
 
-#pragma mark - C-level hardware model (hw.machine / hw.model)
+#pragma mark - C-level hardware (hw.machine / hw.model / hw.ncpu / hw.memsize)
+
+// Copies a fixed-width integer sysctl value out (matching sysctlbyname's contract for size queries
+// and short buffers). Returns 1 if it handled the call.
+static int GBCopyInt(void *oldp, size_t *oldlenp, const void *val, size_t vlen) {
+    if (oldlenp && !oldp) { *oldlenp = vlen; return 1; }             // size query
+    if (oldp && oldlenp) {
+        if (*oldlenp < vlen) { errno = ENOMEM; return 1; }
+        memcpy(oldp, val, vlen);
+        *oldlenp = vlen;
+        return 1;
+    }
+    return 0;
+}
 
 %hookf(int, sysctlbyname, const char *name, void *oldp, size_t *oldlenp, void *newp, size_t newlen) {
-    if (gEnabled && gModel[0] && name &&
-        (strcmp(name, "hw.machine") == 0 || strcmp(name, "hw.model") == 0)) {
-        size_t len = strlen(gModel) + 1;
-        if (oldlenp && !oldp) { *oldlenp = len; return 0; }          // size query
-        if (oldp && oldlenp) {
-            if (*oldlenp < len) { errno = ENOMEM; return -1; }
-            memcpy(oldp, gModel, len);
-            *oldlenp = len;
-            return 0;
+    if (gEnabled && name && !newp) {
+        if (gModel[0] && (strcmp(name, "hw.machine") == 0 || strcmp(name, "hw.model") == 0)) {
+            size_t len = strlen(gModel) + 1;
+            if (oldlenp && !oldp) { *oldlenp = len; return 0; }      // size query
+            if (oldp && oldlenp) {
+                if (*oldlenp < len) { errno = ENOMEM; return -1; }
+                memcpy(oldp, gModel, len);
+                *oldlenp = len;
+                return 0;
+            }
+        }
+        // CPU counts (all report the spoofed core count so nothing contradicts the model).
+        if (gCores > 0 && (strcmp(name, "hw.ncpu") == 0 || strcmp(name, "hw.activecpu") == 0 ||
+                           strcmp(name, "hw.physicalcpu") == 0 || strcmp(name, "hw.physicalcpu_max") == 0 ||
+                           strcmp(name, "hw.logicalcpu") == 0 || strcmp(name, "hw.logicalcpu_max") == 0)) {
+            if (GBCopyInt(oldp, oldlenp, &gCores, sizeof(gCores))) return 0;
+        }
+        // Physical memory.
+        if (gMem > 0 && strcmp(name, "hw.memsize") == 0) {
+            if (GBCopyInt(oldp, oldlenp, &gMem, sizeof(gMem))) return 0;
         }
     }
     return %orig;
@@ -143,6 +170,80 @@ static char gModel[64] = {0};
 
 %end
 
+#pragma mark - CPU / memory (NSProcessInfo, bound to the spoofed device)
+
+%hook NSProcessInfo
+
+- (NSUInteger)processorCount {
+    if (gEnabled && gCores > 0) return (NSUInteger)gCores;
+    return %orig;
+}
+- (NSUInteger)activeProcessorCount {
+    if (gEnabled && gCores > 0) return (NSUInteger)gCores;
+    return %orig;
+}
+- (unsigned long long)physicalMemory {
+    if (gEnabled && gMem > 0) return (unsigned long long)gMem;
+    return %orig;
+}
+
+%end
+
+#pragma mark - Screen (native pixel size + scale, so it matches the spoofed model)
+
+// Only the *pixel-space* getters are spoofed (nativeBounds/nativeScale). The point-space bounds and
+// scale that UIKit lays the app out with are left untouched, so nothing misrenders — but the values
+// apps read to build "1179x2556 scale=3.00" style device strings now agree with the model.
+%hook UIScreen
+
+- (CGRect)nativeBounds {
+    if (gEnabled) {
+        GBStore *s = [GBStore shared];
+        if (s.nativePixelsW > 0 && s.nativePixelsH > 0)
+            return CGRectMake(0, 0, s.nativePixelsW, s.nativePixelsH);
+    }
+    return %orig;
+}
+- (CGFloat)nativeScale {
+    if (gEnabled) {
+        NSInteger sc = [GBStore shared].scaleFactor;
+        if (sc > 0) return (CGFloat)sc;
+    }
+    return %orig;
+}
+
+%end
+
+#pragma mark - "Previously downloaded" / returning-device signals
+
+// Some apps can tell a device installed the app before — even after a delete + reinstall from the
+// user's Apple ID / iCloud — because DeviceCheck (2 persistent bits per device per developer) and
+// App Attest survive uninstall and iCloud restore. There is no way to mint a *valid but different*
+// DeviceCheck token on-device, so when spoofing is on we make these services report "unsupported"
+// and fail token generation. The app then falls back to signals we already spoof (IDFV, keychain,
+// iCloud KV — all reset by wipe), and can't recognise the device as one it has seen.
+
+%hook DCDevice
+- (BOOL)isSupported {
+    if (gEnabled) return NO;
+    return %orig;
+}
+- (void)generateTokenWithCompletionHandler:(void (^)(NSData *, NSError *))completion {
+    if (gEnabled) {
+        if (completion) completion(nil, [NSError errorWithDomain:@"com.apple.devicecheck.error" code:1 userInfo:nil]);
+        return;
+    }
+    %orig;
+}
+%end
+
+%hook DCAppAttestService
+- (BOOL)isSupported {
+    if (gEnabled) return NO;
+    return %orig;
+}
+%end
+
 #pragma mark - In-app menu gesture (two-finger long-press on the key window)
 
 @interface GBGestureTarget : NSObject
@@ -174,6 +275,8 @@ static void GBInstallGesture(void) {
     }
     if (!key) key = anyWindow;
     if (!key) return;
+    // Always-on-top draggable bubble that opens the panel with one tap.
+    [GBFloatingButton installInScene:key.windowScene];
     // Avoid stacking recognizers if the window becomes active repeatedly.
     for (UIGestureRecognizer *r in key.gestureRecognizers) {
         if ([r.name isEqualToString:@"HeavenzyMenu"]) return;
@@ -202,6 +305,8 @@ static void GBInstallGesture(void) {
             if (!store.hasIdentity) [store regenerateIdentity];
             const char *m = store.deviceModel.UTF8String;
             if (m) strlcpy(gModel, m, sizeof(gModel));
+            gCores = (int32_t)store.cpuCores;
+            gMem   = (int64_t)store.memoryBytes;
             NSLog(@"[Heavenzy] Active in %@ → %@", bundleID, store.summary);
         }
 

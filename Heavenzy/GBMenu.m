@@ -60,28 +60,63 @@ static void GBQuit(void) {
     });
 }
 
-#pragma mark - Heavenzy panel
-
-@interface GBPanelViewController : UIViewController
-@property (nonatomic, strong) UIView *card;
-@property (nonatomic, strong) UILabel *deviceValue;
-@property (nonatomic, strong) UISwitch *enableSwitch;
-@end
-
-@implementation GBPanelViewController
+#pragma mark - Style
 
 static UIColor *GBAccent(void)  { return [UIColor colorWithRed:0.55 green:0.45 blue:0.98 alpha:1.0]; } // heavenzy violet
 static UIColor *GBCardBG(void)  { return [UIColor colorWithRed:0.10 green:0.10 blue:0.13 alpha:1.0]; }
 static UIColor *GBFieldBG(void) { return [UIColor colorWithRed:0.17 green:0.17 blue:0.21 alpha:1.0]; }
 static UIColor *GBSubtle(void)  { return [UIColor colorWithWhite:0.64 alpha:1.0]; }
 
+static UILabel *GBLabel(NSString *text, CGFloat size, UIFontWeight weight, UIColor *color) {
+    UILabel *l = [UILabel new];
+    l.text = text; l.textColor = color; l.font = [UIFont systemFontOfSize:size weight:weight];
+    return l;
+}
+
+static UIView *GBSpacer(CGFloat h) {
+    UIView *v = [UIView new];
+    [v.heightAnchor constraintEqualToConstant:h].active = YES;
+    return v;
+}
+
+static UIButton *GBPill(NSString *title) {
+    UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
+    [b setTitle:title forState:UIControlStateNormal];
+    b.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
+    [b setTitleColor:GBAccent() forState:UIControlStateNormal];
+    b.backgroundColor = GBFieldBG();
+    b.layer.cornerRadius = 8;
+    b.contentEdgeInsets = UIEdgeInsetsMake(8, 14, 8, 14);
+    [b setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    return b;
+}
+
+static UIButton *GBWide(NSString *title, UIColor *bg, UIColor *fg) {
+    UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
+    [b setTitle:title forState:UIControlStateNormal];
+    b.titleLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
+    [b setTitleColor:fg forState:UIControlStateNormal];
+    b.backgroundColor = bg;
+    b.layer.cornerRadius = 12;
+    [b.heightAnchor constraintEqualToConstant:46].active = YES;
+    return b;
+}
+
+#pragma mark - Heavenzy panel
+
+@interface GBPanelViewController : UIViewController
+@property (nonatomic, strong) UIView *card;
+@property (nonatomic, strong) UILabel *deviceValue;
+@property (nonatomic, strong) UILabel *detail;
+@property (nonatomic, strong) UISwitch *enableSwitch;
+@end
+
+@implementation GBPanelViewController
+
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = [UIColor colorWithWhite:0 alpha:0.55];
-
-    UITapGestureRecognizer *bgTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(bgTapped:)];
-    [self.view addGestureRecognizer:bgTap];
-
+    [self.view addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(bgTapped:)]];
     GBStore *store = [GBStore shared];
 
     self.card = [UIView new];
@@ -96,8 +131,12 @@ static UIColor *GBSubtle(void)  { return [UIColor colorWithWhite:0.64 alpha:1.0]
     strip.translatesAutoresizingMaskIntoConstraints = NO;
     [self.card addSubview:strip];
 
-    UILabel *title = [self label:@"Heavenzy" size:20 weight:UIFontWeightBold color:UIColor.whiteColor];
-    UILabel *subtitle = [self label:([[NSBundle mainBundle] bundleIdentifier] ?: @"") size:12 weight:UIFontWeightRegular color:GBSubtle()];
+    UILabel *title = GBLabel(@"Heavenzy", 20, UIFontWeightBold, UIColor.whiteColor);
+    UILabel *subtitle = GBLabel(([[NSBundle mainBundle] bundleIdentifier] ?: @""), 12, UIFontWeightRegular, GBSubtle());
+    title.translatesAutoresizingMaskIntoConstraints = NO;
+    subtitle.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.card addSubview:title];
+    [self.card addSubview:subtitle];
 
     UIButton *close = [UIButton buttonWithType:UIButtonTypeSystem];
     [close setTitle:@"✕" forState:UIControlStateNormal];
@@ -105,52 +144,40 @@ static UIColor *GBSubtle(void)  { return [UIColor colorWithWhite:0.64 alpha:1.0]
     close.titleLabel.font = [UIFont systemFontOfSize:18 weight:UIFontWeightSemibold];
     [close addTarget:self action:@selector(closeTapped) forControlEvents:UIControlEventTouchUpInside];
     close.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.card addSubview:close];
 
-    UILabel *deviceLabel = [self label:@"SPOOFED DEVICE" size:11 weight:UIFontWeightSemibold color:GBSubtle()];
-    self.deviceValue = [self label:store.summary size:16 weight:UIFontWeightSemibold color:UIColor.whiteColor];
+    self.deviceValue = GBLabel(store.summary, 16, UIFontWeightSemibold, UIColor.whiteColor);
     self.deviceValue.numberOfLines = 2;
-    UIButton *randomize = [self pillButton:@"Randomize"];
+    UIButton *randomize = GBPill(@"Randomize");
     [randomize addTarget:self action:@selector(randomizeTapped) forControlEvents:UIControlEventTouchUpInside];
+    UIStackView *deviceRow = [[UIStackView alloc] initWithArrangedSubviews:@[self.deviceValue, randomize]];
+    deviceRow.axis = UILayoutConstraintAxisHorizontal; deviceRow.spacing = 10; deviceRow.alignment = UIStackViewAlignmentCenter;
 
-    UILabel *enableLabel = [self label:@"Spoof this app" size:16 weight:UIFontWeightMedium color:UIColor.whiteColor];
+    self.detail = GBLabel([self detailText], 11, UIFontWeightRegular, GBSubtle());
+    self.detail.numberOfLines = 0;
+
     self.enableSwitch = [UISwitch new];
     self.enableSwitch.onTintColor = GBAccent();
     self.enableSwitch.on = store.enabled;
     [self.enableSwitch addTarget:self action:@selector(enableChanged) forControlEvents:UIControlEventValueChanged];
-
-    UIButton *wipe = [self wideButton:@"Wipe data + re-spoof" color:GBAccent() textColor:UIColor.whiteColor];
-    [wipe addTarget:self action:@selector(wipeTapped) forControlEvents:UIControlEventTouchUpInside];
-
-    UILabel *foot = [self label:@"Deletes this app's data, saved logins, cookies and keychain (incl. iCloud), applies the device shown above and reopens the app as a fresh install. Tap Randomize first to roll a different device. iCloud is blocked while spoofing is on, so old accounts can't sync back."
-                           size:11 weight:UIFontWeightRegular color:GBSubtle()];
-    foot.numberOfLines = 0;
-
-    UIStackView *deviceRow = [[UIStackView alloc] initWithArrangedSubviews:@[self.deviceValue, randomize]];
-    deviceRow.axis = UILayoutConstraintAxisHorizontal; deviceRow.spacing = 10; deviceRow.alignment = UIStackViewAlignmentCenter;
-    [randomize setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
-
-    UIView *enableSpacer = [UIView new];
-    UIStackView *enableRow = [[UIStackView alloc] initWithArrangedSubviews:@[enableLabel, enableSpacer, self.enableSwitch]];
+    UIStackView *enableRow = [[UIStackView alloc] initWithArrangedSubviews:@[
+        GBLabel(@"Spoof this app", 16, UIFontWeightMedium, UIColor.whiteColor), [UIView new], self.enableSwitch]];
     enableRow.axis = UILayoutConstraintAxisHorizontal; enableRow.spacing = 8; enableRow.alignment = UIStackViewAlignmentCenter;
 
-    UIStackView *body = [[UIStackView alloc] initWithArrangedSubviews:@[
-        deviceLabel, deviceRow,
-        [self spacer:8],
-        enableRow,
-        [self spacer:4],
-        wipe, foot
-    ]];
-    body.axis = UILayoutConstraintAxisVertical;
-    body.spacing = 8;
-    body.translatesAutoresizingMaskIntoConstraints = NO;
-    [body setCustomSpacing:16 afterView:deviceRow];
-    [self.card addSubview:body];
+    UIButton *wipe = GBWide(@"Wipe data + re-spoof", GBAccent(), UIColor.whiteColor);
+    [wipe addTarget:self action:@selector(wipeTapped) forControlEvents:UIControlEventTouchUpInside];
 
-    title.translatesAutoresizingMaskIntoConstraints = NO;
-    subtitle.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.card addSubview:title];
-    [self.card addSubview:subtitle];
-    [self.card addSubview:close];
+    UILabel *foot = GBLabel(@"Deletes this app's data, saved logins, cookies and keychain (incl. iCloud), applies the device shown above and reopens the app as a fresh install. Tap Randomize first to roll a different device. iCloud + returning-device checks are blocked while spoofing is on, so the app can't tell it was installed here before.",
+                            11, UIFontWeightRegular, GBSubtle());
+    foot.numberOfLines = 0;
+
+    UIStackView *body = [[UIStackView alloc] initWithArrangedSubviews:@[
+        GBLabel(@"SPOOFED DEVICE", 11, UIFontWeightSemibold, GBSubtle()), deviceRow, self.detail,
+        GBSpacer(8), enableRow, GBSpacer(4), wipe, foot ]];
+    body.axis = UILayoutConstraintAxisVertical; body.spacing = 8;
+    body.translatesAutoresizingMaskIntoConstraints = NO;
+    [body setCustomSpacing:16 afterView:self.detail];
+    [self.card addSubview:body];
 
     CGFloat cardW = MIN(360, UIScreen.mainScreen.bounds.size.width - 32);
     [NSLayoutConstraint activateConstraints:@[
@@ -178,44 +205,15 @@ static UIColor *GBSubtle(void)  { return [UIColor colorWithWhite:0.64 alpha:1.0]
         [body.leadingAnchor constraintEqualToAnchor:self.card.leadingAnchor constant:18],
         [body.trailingAnchor constraintEqualToAnchor:self.card.trailingAnchor constant:-18],
         [body.bottomAnchor constraintEqualToAnchor:self.card.bottomAnchor constant:-18],
-
-        [wipe.heightAnchor constraintEqualToConstant:46],
     ]];
 }
 
-#pragma mark Builders
-
-- (UILabel *)label:(NSString *)text size:(CGFloat)size weight:(UIFontWeight)weight color:(UIColor *)color {
-    UILabel *l = [UILabel new];
-    l.text = text; l.textColor = color; l.font = [UIFont systemFontOfSize:size weight:weight];
-    return l;
-}
-
-- (UIView *)spacer:(CGFloat)h {
-    UIView *v = [UIView new];
-    [v.heightAnchor constraintEqualToConstant:h].active = YES;
-    return v;
-}
-
-- (UIButton *)pillButton:(NSString *)title {
-    UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
-    [b setTitle:title forState:UIControlStateNormal];
-    b.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
-    [b setTitleColor:GBAccent() forState:UIControlStateNormal];
-    b.backgroundColor = GBFieldBG();
-    b.layer.cornerRadius = 8;
-    b.contentEdgeInsets = UIEdgeInsetsMake(8, 14, 8, 14);
-    return b;
-}
-
-- (UIButton *)wideButton:(NSString *)title color:(UIColor *)color textColor:(UIColor *)textColor {
-    UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
-    [b setTitle:title forState:UIControlStateNormal];
-    b.titleLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
-    [b setTitleColor:textColor forState:UIControlStateNormal];
-    b.backgroundColor = color;
-    b.layer.cornerRadius = 12;
-    return b;
+- (NSString *)detailText {
+    GBStore *s = [GBStore shared];
+    if (!s.hasIdentity) return @"";
+    return [NSString stringWithFormat:@"%@ · %ld×%ld px @%ldx · %ld cores · %ld GB",
+            s.deviceModel, (long)s.nativePixelsW, (long)s.nativePixelsH,
+            (long)s.scaleFactor, (long)s.cpuCores, (long)s.memoryGB];
 }
 
 #pragma mark Actions
@@ -230,17 +228,22 @@ static UIColor *GBSubtle(void)  { return [UIColor colorWithWhite:0.64 alpha:1.0]
 - (void)randomizeTapped {
     [[GBStore shared] regenerateIdentity];
     self.deviceValue.text = [GBStore shared].summary;
+    self.detail.text = [self detailText];
 }
 
 - (void)enableChanged {
     GBStore *store = [GBStore shared];
-    if (self.enableSwitch.on && !store.hasIdentity) { [store regenerateIdentity]; self.deviceValue.text = store.summary; }
+    if (self.enableSwitch.on && !store.hasIdentity) {
+        [store regenerateIdentity];
+        self.deviceValue.text = store.summary;
+        self.detail.text = [self detailText];
+    }
     store.enabled = self.enableSwitch.on;
 }
 
 - (void)wipeTapped {
     GBStore *store = [GBStore shared];
-    if (!store.hasIdentity) { [store regenerateIdentity]; self.deviceValue.text = store.summary; }
+    if (!store.hasIdentity) { [store regenerateIdentity]; self.deviceValue.text = store.summary; self.detail.text = [self detailText]; }
 
     UIAlertController *c = [UIAlertController alertControllerWithTitle:@"Wipe + re-spoof?"
         message:[NSString stringWithFormat:@"Deletes this app's data, saved logins, cookies, web data and keychain (including iCloud-synced items), applies “%@” and reopens the app as a fresh install with no previous accounts.", store.summary]
@@ -249,7 +252,7 @@ static UIColor *GBSubtle(void)  { return [UIColor colorWithWhite:0.64 alpha:1.0]
     [c addAction:[UIAlertAction actionWithTitle:@"Wipe + re-spoof" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *x) {
         store.enabled = YES;   // stay opted-in after the wipe
         GBClearAppData();      // this also deletes our own plist inside the app container…
-        [store save];          // …so rewrite it with the device shown in the panel (from Randomize)
+        [store save];          // …so rewrite it (device shown above + bubble position)
         GBQuit();              // reopen → fresh install with that identity
     }]];
     [self presentViewController:c animated:YES completion:nil];

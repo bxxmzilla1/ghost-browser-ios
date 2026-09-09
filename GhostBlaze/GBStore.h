@@ -33,6 +33,10 @@
 /// connectionProxyDictionary / CFNetwork system-proxy form for the stored proxy (nil if none).
 - (NSDictionary *)proxyDictionary;
 
+/// Seed the shared credential storage with the proxy's user/pass for its protection space, so
+/// CFNetwork answers the proxy's 407 auth challenge automatically instead of prompting in Settings.
+- (void)installProxyCredential;
+
 /// YES once a device identity has been chosen.
 @property (nonatomic, readonly) BOOL hasIdentity;
 

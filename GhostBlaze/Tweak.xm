@@ -167,6 +167,7 @@ static void GBInstallGesture(void) {
             if (m) strlcpy(gModel, m, sizeof(gModel));
             NSDictionary *pd = [store proxyDictionary];
             if (pd) gProxyDict = (CFDictionaryRef)CFBridgingRetain([pd copy]);
+            [store installProxyCredential];   // answer the proxy 407 automatically (no Settings prompt)
             NSLog(@"[GhostBlaze] Active in %@ → %@ · proxy: %@", bundleID, store.summary, store.proxySummary);
         }
 

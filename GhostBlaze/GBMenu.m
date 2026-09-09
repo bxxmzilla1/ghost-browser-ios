@@ -293,6 +293,7 @@ static UIColor *GBSubtle(void)    { return [UIColor colorWithWhite:0.62 alpha:1.
 
 - (void)applyTapped {
     [[GBStore shared] setProxyFromLink:self.proxyField.text];
+    [[GBStore shared] installProxyCredential];
     [self dismissViewControllerAnimated:YES completion:^{ GBQuit(); }];
 }
 

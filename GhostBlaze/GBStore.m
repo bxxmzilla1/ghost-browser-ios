@@ -132,6 +132,34 @@ static NSString *GBPrefsPath(void) {
     return d;
 }
 
+- (void)installProxyCredential {
+    NSDictionary *p = [GBStore parseProxy:_proxyLink];
+    if (!p) return;
+    NSString *user = p[@"user"], *pass = p[@"pass"];
+    if (user.length == 0) return;   // no auth on this proxy
+    NSString *host = p[@"host"];
+    NSInteger port = [p[@"port"] integerValue];
+    BOOL socks = [p[@"scheme"] isEqualToString:@"socks5"];
+
+    NSURLCredential *cred = [NSURLCredential credentialWithUser:user password:pass
+                                                    persistence:NSURLCredentialPersistenceForSession];
+    NSMutableArray<NSURLProtectionSpace *> *spaces = [NSMutableArray array];
+    if (socks) {
+        [spaces addObject:[[NSURLProtectionSpace alloc] initWithProxyHost:host port:port
+            type:NSURLProtectionSpaceSOCKSProxy realm:nil authenticationMethod:nil]];
+    } else {
+        [spaces addObject:[[NSURLProtectionSpace alloc] initWithProxyHost:host port:port
+            type:NSURLProtectionSpaceHTTPProxy realm:nil authenticationMethod:nil]];
+        [spaces addObject:[[NSURLProtectionSpace alloc] initWithProxyHost:host port:port
+            type:NSURLProtectionSpaceHTTPSProxy realm:nil authenticationMethod:nil]];
+    }
+    NSURLCredentialStorage *storage = [NSURLCredentialStorage sharedCredentialStorage];
+    for (NSURLProtectionSpace *ps in spaces) {
+        [storage setDefaultCredential:cred forProtectionSpace:ps];
+        [storage setCredential:cred forProtectionSpace:ps];
+    }
+}
+
 // Plausible modern iPhones paired with a sensible iOS. hw.machine is the primary fingerprint.
 + (NSArray<NSArray<NSString *> *> *)devicePool {
     static NSArray *pool;

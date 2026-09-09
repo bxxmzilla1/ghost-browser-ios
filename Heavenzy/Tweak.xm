@@ -46,18 +46,54 @@ static char gModel[64] = {0};
 // swallow writes, so a wiped device stays wiped and nothing syncs back.
 %hook NSUbiquitousKeyValueStore
 
-- (id)objectForKey:(NSString *)key { if (gEnabled) return nil; return %orig; }
-- (NSString *)stringForKey:(NSString *)key { if (gEnabled) return nil; return %orig; }
-- (NSArray *)arrayForKey:(NSString *)key { if (gEnabled) return nil; return %orig; }
-- (NSDictionary *)dictionaryForKey:(NSString *)key { if (gEnabled) return nil; return %orig; }
-- (NSData *)dataForKey:(NSString *)key { if (gEnabled) return nil; return %orig; }
-- (NSDictionary *)dictionaryRepresentation { if (gEnabled) return @{}; return %orig; }
-- (void)setObject:(id)obj forKey:(NSString *)key { if (gEnabled) return; %orig; }
-- (void)setString:(NSString *)s forKey:(NSString *)key { if (gEnabled) return; %orig; }
-- (void)setData:(NSData *)d forKey:(NSString *)key { if (gEnabled) return; %orig; }
-- (void)setArray:(NSArray *)a forKey:(NSString *)key { if (gEnabled) return; %orig; }
-- (void)setDictionary:(NSDictionary *)d forKey:(NSString *)key { if (gEnabled) return; %orig; }
-- (BOOL)synchronize { if (gEnabled) return YES; return %orig; }
+- (id)objectForKey:(NSString *)key {
+    if (gEnabled) return nil;
+    return %orig;
+}
+- (NSString *)stringForKey:(NSString *)key {
+    if (gEnabled) return nil;
+    return %orig;
+}
+- (NSArray *)arrayForKey:(NSString *)key {
+    if (gEnabled) return nil;
+    return %orig;
+}
+- (NSDictionary *)dictionaryForKey:(NSString *)key {
+    if (gEnabled) return nil;
+    return %orig;
+}
+- (NSData *)dataForKey:(NSString *)key {
+    if (gEnabled) return nil;
+    return %orig;
+}
+- (NSDictionary *)dictionaryRepresentation {
+    if (gEnabled) return @{};
+    return %orig;
+}
+- (void)setObject:(id)obj forKey:(NSString *)key {
+    if (gEnabled) return;
+    %orig;
+}
+- (void)setString:(NSString *)s forKey:(NSString *)key {
+    if (gEnabled) return;
+    %orig;
+}
+- (void)setData:(NSData *)d forKey:(NSString *)key {
+    if (gEnabled) return;
+    %orig;
+}
+- (void)setArray:(NSArray *)a forKey:(NSString *)key {
+    if (gEnabled) return;
+    %orig;
+}
+- (void)setDictionary:(NSDictionary *)d forKey:(NSString *)key {
+    if (gEnabled) return;
+    %orig;
+}
+- (BOOL)synchronize {
+    if (gEnabled) return YES;
+    return %orig;
+}
 
 %end
 

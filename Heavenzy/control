@@ -6,4 +6,4 @@ Description: Per-app device spoofer with a Ghost-style control app (model, iOS, 
 Maintainer: Heavenzy
 Author: Heavenzy
 Section: Tweaks
-Depends: ellekit, libsandy
+Depends: ellekit

@@ -20,6 +20,7 @@ static NSString *GBPrefsPath(void) {
 - (void)reload {
     NSDictionary *d = [NSDictionary dictionaryWithContentsOfFile:GBPrefsPath()];
     _enabled       = [d[@"enabled"] boolValue];
+    _wipePending   = [d[@"wipePending"] boolValue];
     _deviceModel   = [d[@"deviceModel"] copy];
     _marketingName = [d[@"marketingName"] copy];
     _systemVersion = [d[@"systemVersion"] copy];
@@ -90,6 +91,7 @@ static NSString *GBPrefsPath(void) {
 - (void)save {
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     d[@"enabled"]       = @(_enabled);
+    if (_wipePending)   d[@"wipePending"]   = @YES;
     if (_deviceModel)   d[@"deviceModel"]   = _deviceModel;
     if (_marketingName) d[@"marketingName"] = _marketingName;
     if (_systemVersion) d[@"systemVersion"] = _systemVersion;

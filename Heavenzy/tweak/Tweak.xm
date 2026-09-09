@@ -398,14 +398,20 @@ static void GBInstallGesture(void) {
         // control app (which links UIKit and would otherwise match the filter).
         if (!bundleID || [bundleID hasPrefix:@"com.apple."] || [bundleID isEqualToString:@"com.heavenzy.app"]) return;
 
-        // Honour an "Erase App Data" request queued by the Heavenzy control app for this bundle.
+        // Try to reach the central store too (only works if libSandy happens to be installed); the
+        // primary path is the per-app config the control app writes straight into this container.
         [HZConfig grantSandboxAccess];
-        if ([HZConfig wipePendingForApp:bundleID]) {
-            [GBMenu clearAppData];
-            [HZConfig setWipePending:NO forApp:bundleID];
-        }
 
         GBStore *store = [GBStore shared];
+
+        // Honour an "Erase App Data" request queued by the Heavenzy control app — either written into
+        // this app's own container (store.wipePending) or in the central plist (libSandy).
+        if (store.wipePending || [HZConfig wipePendingForApp:bundleID]) {
+            [GBMenu clearAppData];               // deletes our container plist too…
+            store.wipePending = NO;
+            [store save];                        // …so rewrite it (keeps identity + enabled)
+            [HZConfig setWipePending:NO forApp:bundleID];
+        }
         gEnabled = store.enabled ? 1 : 0;
         if (gEnabled) {
             if (!store.hasIdentity) [store regenerateIdentity];

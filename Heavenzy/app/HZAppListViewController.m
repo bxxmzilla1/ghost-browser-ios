@@ -2,6 +2,7 @@
 #import "HZAppDetailViewController.h"
 #import "HZConfig.h"
 #import "HZDevice.h"
+#import "HZContainerSync.h"
 
 static UIColor *HZAccent(void) { return [UIColor colorWithRed:0.55 green:0.45 blue:0.98 alpha:1.0]; }
 
@@ -128,6 +129,9 @@ static UIColor *HZAccent(void) { return [UIColor colorWithRed:0.55 green:0.45 bl
         [HZConfig setIdentity:HZGenerateIdentity() forApp:bid];   // roll one on first enable
     }
     [HZConfig setEnabled:sw.on forApp:bid];
+    // Push straight into the app's container so the tweak sees it without libSandy.
+    [HZContainerSync writeForApp:bid identity:[HZConfig identityForApp:bid]
+                         enabled:sw.on wipePending:[HZConfig wipePendingForApp:bid]];
     [self.tableView reloadData];
 }
 

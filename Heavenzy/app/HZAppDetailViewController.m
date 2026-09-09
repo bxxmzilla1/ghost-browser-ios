@@ -1,6 +1,7 @@
 #import "HZAppDetailViewController.h"
 #import "HZConfig.h"
 #import "HZDevice.h"
+#import "HZContainerSync.h"
 
 static UIColor *HZAccent(void)  { return [UIColor colorWithRed:0.55 green:0.45 blue:0.98 alpha:1.0]; }
 static UIColor *HZCardBG(void)  { return [UIColor colorWithRed:0.11 green:0.11 blue:0.14 alpha:1.0]; }
@@ -154,14 +155,22 @@ enum { SEC_ENABLE, SEC_DEVICE, SEC_DETAILS, SEC_ERASE, SEC_COUNT };
 
 #pragma mark - Actions
 
+// Mirror the current state into the target app's own container so the tweak reads it without libSandy.
+- (void)sync {
+    [HZContainerSync writeForApp:self.bundleId identity:self.identity
+                         enabled:self.enabled wipePending:[HZConfig wipePendingForApp:self.bundleId]];
+}
+
 - (void)toggleEnable:(UISwitch *)sw {
     self.enabled = sw.on;
     [HZConfig setEnabled:sw.on forApp:self.bundleId];
+    [self sync];
 }
 
 - (void)generate {
     self.identity = HZGenerateIdentity();
     [HZConfig setIdentity:self.identity forApp:self.bundleId];
+    [self sync];
     [self rebuildDetails];
     [self.tableView reloadData];
 }
@@ -177,6 +186,7 @@ enum { SEC_ENABLE, SEC_DEVICE, SEC_DETAILS, SEC_ERASE, SEC_COUNT };
         handler:^(__unused UIAlertAction *x) {
             [HZConfig setWipePending:YES forApp:self.bundleId];
             if (!self.enabled) { self.enabled = YES; [HZConfig setEnabled:YES forApp:self.bundleId]; }
+            [HZContainerSync writeForApp:self.bundleId identity:self.identity enabled:YES wipePending:YES];
             UIAlertController *ok = [UIAlertController alertControllerWithTitle:@"Queued"
                 message:[NSString stringWithFormat:@"Open %@ to complete the reset.", self.appName]
                 preferredStyle:UIAlertControllerStyleAlert];

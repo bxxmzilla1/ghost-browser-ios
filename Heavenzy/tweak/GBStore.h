@@ -13,6 +13,10 @@
 /// Master gate for this process: the tweak only spoofs when the host app is opted in.
 @property (nonatomic, assign) BOOL enabled;
 
+/// Erase-on-next-launch flag written into this app's container by the Heavenzy control app. The
+/// tweak performs the data wipe on launch, then clears it.
+@property (nonatomic, assign) BOOL wipePending;
+
 // Spoofed hardware the app sees (all mutually consistent, picked together from the device pool).
 @property (nonatomic, copy) NSString *deviceModel;     // hw.machine, e.g. "iPhone16,1"
 @property (nonatomic, copy) NSString *marketingName;   // e.g. "iPhone 15 Pro"

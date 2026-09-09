@@ -23,10 +23,6 @@ static NSString *GBPrefsPath(void) {
     _deviceName    = [d[@"deviceName"] copy] ?: @"iPhone";
     _idfv          = [d[@"idfv"] copy];
     _idfa          = [d[@"idfa"] copy];
-    _bundleAPIKey  = [d[@"bundleAPIKey"] copy] ?: @"";
-    _bundleTeamId  = [d[@"bundleTeamId"] copy] ?: @"";
-    _floatingOrigin = CGPointMake(d[@"floatX"] ? [d[@"floatX"] doubleValue] : -1,
-                                  d[@"floatY"] ? [d[@"floatY"] doubleValue] : -1);
 }
 
 - (void)save {
@@ -38,12 +34,6 @@ static NSString *GBPrefsPath(void) {
     if (_deviceName)    d[@"deviceName"]    = _deviceName;
     if (_idfv)          d[@"idfv"]          = _idfv;
     if (_idfa)          d[@"idfa"]          = _idfa;
-    if (_bundleAPIKey.length) d[@"bundleAPIKey"] = _bundleAPIKey;
-    if (_bundleTeamId.length) d[@"bundleTeamId"] = _bundleTeamId;
-    if (_floatingOrigin.x >= 0 && _floatingOrigin.y >= 0) {
-        d[@"floatX"] = @(_floatingOrigin.x);
-        d[@"floatY"] = @(_floatingOrigin.y);
-    }
     NSString *path = GBPrefsPath();
     [[NSFileManager defaultManager] createDirectoryAtPath:[path stringByDeletingLastPathComponent]
                               withIntermediateDirectories:YES attributes:nil error:nil];

@@ -59,7 +59,11 @@ static CFDictionaryRef gProxyDict = NULL;
 
 - (void)setConnectionProxyDictionary:(NSDictionary *)dict {
     // Force our proxy even when the app tries to set (or clear) its own.
-    if (gEnabled && gProxyDict) { %orig((__bridge NSDictionary *)gProxyDict); return; }
+    if (gEnabled && gProxyDict) {
+        NSDictionary *forced = (__bridge NSDictionary *)gProxyDict;
+        %orig(forced);
+        return;
+    }
     %orig;
 }
 

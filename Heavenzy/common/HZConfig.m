@@ -84,4 +84,24 @@
     [self write:cfg];
 }
 
+#pragma mark Bundle.social credentials (global, reserved __bundlesocial key)
+
+// Stored under a top-level key that can never collide with a real bundle id (those never start "__").
++ (NSString *)bundleKey  { id d = [self all][@"__bundlesocial"]; return [d isKindOfClass:NSDictionary.class] ? d[@"key"]  : nil; }
++ (NSString *)bundleTeam { id d = [self all][@"__bundlesocial"]; return [d isKindOfClass:NSDictionary.class] ? d[@"team"] : nil; }
+
++ (void)setBundleKey:(NSString *)key {
+    NSMutableDictionary *cfg = [[self all] mutableCopy];
+    NSMutableDictionary *e = [self mutableEntry:@"__bundlesocial" in:cfg];
+    if (key.length) e[@"key"] = key; else [e removeObjectForKey:@"key"];
+    [self write:cfg];
+}
+
++ (void)setBundleTeam:(NSString *)team {
+    NSMutableDictionary *cfg = [[self all] mutableCopy];
+    NSMutableDictionary *e = [self mutableEntry:@"__bundlesocial" in:cfg];
+    if (team.length) e[@"team"] = team; else [e removeObjectForKey:@"team"];
+    [self write:cfg];
+}
+
 @end

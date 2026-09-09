@@ -229,15 +229,19 @@ static void GBInstallGesture(void) {
         // reporter (the EXC_GUARD launch crash on Instagram/Facebook).
         %init;
 
-        // The menu is always available (even when spoofing is off) so the user can opt this app in.
+        // The floating button + menu are always available (even when spoofing is off) so the user
+        // can reach them / opt this app in. Re-assert on every activation…
         [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidBecomeActiveNotification
                                                           object:nil queue:[NSOperationQueue mainQueue]
                                                       usingBlock:^(NSNotification *note) {
             GBInstallGesture();
         }];
-        // In case the app is already active by the time we load.
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            GBInstallGesture();
-        });
+        // …and retry a few times after launch, because the app's key window/scene often isn't ready
+        // the instant the tweak loads (that's why the bubble could be missing before).
+        for (NSNumber *delay in @[ @0.5, @1.5, @3.0, @5.0 ]) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay.doubleValue * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                GBInstallGesture();
+            });
+        }
     }
 }

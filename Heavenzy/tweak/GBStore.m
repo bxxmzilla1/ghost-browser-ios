@@ -47,6 +47,8 @@ static NSString *GBPrefsPath(void) {
     _localeId      = [d[@"localeId"] copy];
     _floatingOrigin = CGPointMake(d[@"floatX"] ? [d[@"floatX"] doubleValue] : -1,
                                   d[@"floatY"] ? [d[@"floatY"] doubleValue] : -1);
+    _bundleKey     = [d[@"bundleKey"] copy];
+    _bundleTeam    = [d[@"bundleTeam"] copy];
 
     // If the in-app panel never configured this app, fall back to what the Heavenzy control app set
     // centrally for this bundle id (Ghost model). Adopted into the local container so it sticks even
@@ -62,6 +64,14 @@ static NSString *GBPrefsPath(void) {
                 [self save];
             }
         }
+    }
+
+    // Bundle.social key normally arrives via the control app writing our container plist; if it's
+    // not there yet but the central store is reachable (libSandy), adopt it as a fallback.
+    if (_bundleKey.length == 0) {
+        [HZConfig grantSandboxAccess];
+        NSString *k = [HZConfig bundleKey];
+        if (k.length) { _bundleKey = [k copy]; _bundleTeam = [[HZConfig bundleTeam] copy]; }
     }
 }
 
@@ -116,6 +126,8 @@ static NSString *GBPrefsPath(void) {
         d[@"floatX"] = @(_floatingOrigin.x);
         d[@"floatY"] = @(_floatingOrigin.y);
     }
+    if (_bundleKey)  d[@"bundleKey"]  = _bundleKey;    // preserve creds across in-app saves/wipes
+    if (_bundleTeam) d[@"bundleTeam"] = _bundleTeam;
     NSString *path = GBPrefsPath();
     [[NSFileManager defaultManager] createDirectoryAtPath:[path stringByDeletingLastPathComponent]
                               withIntermediateDirectories:YES attributes:nil error:nil];

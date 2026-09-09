@@ -1,8 +1,8 @@
 Package: com.heavenzy.tweak
 Name: Heavenzy
-Version: 1.1.1
+Version: 1.2.0
 Architecture: iphoneos-arm64
-Description: Per-app device identity reset (Blaze-style): keeps your real iPhone model but resets serial, UDID, IDFV, IDFA, Wi-Fi/Bluetooth MAC and IMEI, plus a wipe + re-spoof that clears saved accounts and blocks iCloud restore, so an app sees a brand-new phone with a first-time install. Configure apps in the Heavenzy app, or use the in-app panel via a two-finger long-press.
+Description: Per-app device identity reset (Blaze-style): keeps your real iPhone model but resets serial, UDID, IDFV, IDFA, Wi-Fi/Bluetooth MAC and IMEI, plus a wipe + re-spoof that clears saved accounts and blocks iCloud restore, so an app sees a brand-new phone with a first-time install. Inside Instagram the floating H button opens a Bundle.social connect action; add your API key in the Heavenzy app (Settings). Configure apps in the Heavenzy app, or use the in-app panel via a two-finger long-press.
 Maintainer: Heavenzy
 Author: Heavenzy
 Section: Tweaks

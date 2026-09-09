@@ -7,10 +7,16 @@
 @interface HZContainerSync : NSObject
 
 /// Mirror enabled + identity (+ optional erase request) into the app's container. Returns NO if the
-/// container can't be located (e.g. the app has never been launched yet).
+/// container can't be located (e.g. the app has never been launched yet). The current global
+/// Bundle.social key/team (from HZConfig) is mirrored in too.
 + (BOOL)writeForApp:(NSString *)bundleId
            identity:(NSDictionary *)identity
             enabled:(BOOL)enabled
         wipePending:(BOOL)wipePending;
+
+/// Push the Bundle.social key/team into *every* installed user app's container (merging, without
+/// touching identity/enabled), so the in-app button can reach it even in apps that aren't spoofed.
+/// Returns how many containers were updated.
++ (NSInteger)writeBundleKey:(NSString *)key team:(NSString *)team;
 
 @end

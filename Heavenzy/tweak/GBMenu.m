@@ -1,6 +1,7 @@
 #import "GBMenu.h"
 #import "GBStore.h"
 #import "GBTokens.h"
+#import "GBBundleSocial.h"
 #import <WebKit/WebKit.h>
 #import <Security/Security.h>
 
@@ -110,6 +111,7 @@ static UIButton *GBWide(NSString *title, UIColor *bg, UIColor *fg) {
 @property (nonatomic, strong) UILabel *deviceValue;
 @property (nonatomic, strong) UILabel *detail;
 @property (nonatomic, strong) UISwitch *enableSwitch;
+@property (nonatomic, strong) UIButton *connectButton;
 @end
 
 @implementation GBPanelViewController
@@ -172,23 +174,26 @@ static UIButton *GBWide(NSString *title, UIColor *bg, UIColor *fg) {
                             11, UIFontWeightRegular, GBSubtle());
     foot.numberOfLines = 0;
 
-    NSMutableArray *rows = [@[
-        GBLabel(@"DEVICE IDENTITY", 11, UIFontWeightSemibold, GBSubtle()), deviceRow, self.detail,
-        GBSpacer(8), enableRow, GBSpacer(4) ] mutableCopy];
-
-    // Instagram-only: export the saved auth headers (Authorization / IG-U-DS-USER-ID / X-MID /
-    // X-IG-WWW-Claim) to the clipboard, like the "InstagramJailed" tweak.
-    if ([[[NSBundle mainBundle] bundleIdentifier] isEqualToString:@"com.burbn.instagram"]) {
-        UIButton *token = GBWide(@"Copy Instagram token", GBFieldBG(), GBAccent());
-        [token addTarget:self action:@selector(copyTokenTapped) forControlEvents:UIControlEventTouchUpInside];
-        [rows addObject:token];
+    NSMutableArray *rows;
+    BOOL igOnly = [[[NSBundle mainBundle] bundleIdentifier] isEqualToString:@"com.burbn.instagram"];
+    if (igOnly) {
+        // Inside Instagram the panel is just the Bundle.social connect button (per request).
+        self.connectButton = GBWide(@"Connect via Bundle.social", GBAccent(), UIColor.whiteColor);
+        [self.connectButton addTarget:self action:@selector(connectBundleTapped) forControlEvents:UIControlEventTouchUpInside];
+        UILabel *igFoot = GBLabel(@"Opens the Bundle.social hosted page to connect this Instagram account. "
+                                  @"Add your API key in the Heavenzy app → Settings first.",
+                                  11, UIFontWeightRegular, GBSubtle());
+        igFoot.numberOfLines = 0;
+        rows = [@[ self.connectButton, igFoot ] mutableCopy];
+    } else {
+        rows = [@[
+            GBLabel(@"DEVICE IDENTITY", 11, UIFontWeightSemibold, GBSubtle()), deviceRow, self.detail,
+            GBSpacer(8), enableRow, GBSpacer(4), wipe, foot ] mutableCopy];
     }
-
-    [rows addObjectsFromArray:@[ wipe, foot ]];
     UIStackView *body = [[UIStackView alloc] initWithArrangedSubviews:rows];
     body.axis = UILayoutConstraintAxisVertical; body.spacing = 8;
     body.translatesAutoresizingMaskIntoConstraints = NO;
-    [body setCustomSpacing:16 afterView:self.detail];
+    if (!igOnly) [body setCustomSpacing:16 afterView:self.detail];
     [self.card addSubview:body];
 
     CGFloat cardW = MIN(360, UIScreen.mainScreen.bounds.size.width - 32);
@@ -272,6 +277,34 @@ static UIButton *GBWide(NSString *title, UIColor *bg, UIColor *fg) {
         preferredStyle:UIAlertControllerStyleAlert];
     [a addAction:[UIAlertAction actionWithTitle:@"Done" style:UIAlertActionStyleDefault handler:nil]];
     [self presentViewController:a animated:YES completion:nil];
+}
+
+- (void)connectBundleTapped {
+    GBStore *s = [GBStore shared];
+    if (s.bundleKey.length == 0) {
+        UIAlertController *a = [UIAlertController alertControllerWithTitle:@"No API key"
+            message:@"Open the Heavenzy app, tap the gear (Settings) and paste your Bundle.social API key first."
+            preferredStyle:UIAlertControllerStyleAlert];
+        [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+        [self presentViewController:a animated:YES completion:nil];
+        return;
+    }
+    self.connectButton.enabled = NO;
+    [self.connectButton setTitle:@"Connecting…" forState:UIControlStateNormal];
+    [GBBundleSocial instagramPortalWithKey:s.bundleKey team:s.bundleTeam completion:^(NSURL *url, NSString *error) {
+        self.connectButton.enabled = YES;
+        [self.connectButton setTitle:@"Connect via Bundle.social" forState:UIControlStateNormal];
+        if (url) {
+            [self dismissViewControllerAnimated:YES completion:^{
+                [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
+            }];
+        } else {
+            UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Couldn't connect"
+                message:error ?: @"Unknown error." preferredStyle:UIAlertControllerStyleAlert];
+            [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+            [self presentViewController:a animated:YES completion:nil];
+        }
+    }];
 }
 
 - (void)wipeTapped {

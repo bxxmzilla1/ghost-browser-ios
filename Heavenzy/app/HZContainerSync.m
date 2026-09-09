@@ -1,4 +1,5 @@
 #import "HZContainerSync.h"
+#import "HZConfig.h"
 
 @implementation HZContainerSync
 
@@ -16,6 +17,42 @@
         }
     } @catch (__unused NSException *e) {}
     return nil;
+}
+
+// Container plist path for a bundle id, creating the Preferences dir. nil if the app has no container.
++ (NSString *)plistPathForApp:(NSString *)bundleId {
+    NSURL *container = [self dataContainerForApp:bundleId];
+    if (!container) return nil;
+    NSString *prefsDir = [container.path stringByAppendingPathComponent:@"Library/Preferences"];
+    [[NSFileManager defaultManager] createDirectoryAtPath:prefsDir withIntermediateDirectories:YES attributes:nil error:nil];
+    return [prefsDir stringByAppendingPathComponent:@"com.heavenzy.plist"];
+}
+
+// Merge the current global Bundle.social key/team into a mutable container dict.
++ (void)applyBundleAuthInto:(NSMutableDictionary *)d {
+    NSString *key = [HZConfig bundleKey], *team = [HZConfig bundleTeam];
+    if (key.length)  d[@"bundleKey"]  = key;  else [d removeObjectForKey:@"bundleKey"];
+    if (team.length) d[@"bundleTeam"] = team; else [d removeObjectForKey:@"bundleTeam"];
+}
+
++ (NSInteger)writeBundleKey:(NSString *)key team:(NSString *)team {
+    NSInteger n = 0;
+    @try {
+        Class wsClass = NSClassFromString(@"LSApplicationWorkspace");
+        id ws = [wsClass valueForKey:@"defaultWorkspace"];
+        for (id p in [ws valueForKey:@"allApplications"]) {
+            if (![[p valueForKey:@"applicationType"] isEqualToString:@"User"]) continue;
+            NSString *bid = [p valueForKey:@"applicationIdentifier"];
+            if (bid.length == 0 || [bid isEqualToString:@"com.heavenzy.app"]) continue;
+            NSString *path = [self plistPathForApp:bid];
+            if (!path) continue;
+            NSMutableDictionary *d = [[NSDictionary dictionaryWithContentsOfFile:path] mutableCopy] ?: [NSMutableDictionary dictionary];
+            if (key.length)  d[@"bundleKey"]  = key;  else [d removeObjectForKey:@"bundleKey"];
+            if (team.length) d[@"bundleTeam"] = team; else [d removeObjectForKey:@"bundleTeam"];
+            if ([d writeToFile:path atomically:YES]) n++;
+        }
+    } @catch (__unused NSException *e) {}
+    return n;
 }
 
 + (BOOL)writeForApp:(NSString *)bundleId
@@ -56,6 +93,8 @@
     set(@"bluetooth", i[@"bluetooth"]);
     set(@"imei",      i[@"imei"]);
     d[@"deviceName"] = @"iPhone";
+
+    [self applyBundleAuthInto:d];   // keep the app's copy of the Bundle.social key/team fresh
 
     return [d writeToFile:path atomically:YES];
 }

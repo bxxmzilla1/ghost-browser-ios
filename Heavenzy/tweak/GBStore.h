@@ -50,6 +50,10 @@
 // Floating button position (points, top-left of the 44pt bubble). Negative = not set yet.
 @property (nonatomic, assign) CGPoint floatingOrigin;
 
+// Bundle.social credentials mirrored in by the control app (used by the in-app Instagram button).
+@property (nonatomic, copy) NSString *bundleKey;
+@property (nonatomic, copy) NSString *bundleTeam;
+
 /// Native pixel dimensions (points * scale) — what UIScreen.nativeBounds should report.
 @property (nonatomic, readonly) NSInteger nativePixelsW;
 @property (nonatomic, readonly) NSInteger nativePixelsH;

@@ -23,6 +23,7 @@ static NSString *GBPrefsPath(void) {
     _deviceName    = [d[@"deviceName"] copy] ?: @"iPhone";
     _idfv          = [d[@"idfv"] copy];
     _idfa          = [d[@"idfa"] copy];
+    _proxyLink     = [d[@"proxyLink"] copy];
 }
 
 - (void)save {
@@ -34,6 +35,7 @@ static NSString *GBPrefsPath(void) {
     if (_deviceName)    d[@"deviceName"]    = _deviceName;
     if (_idfv)          d[@"idfv"]          = _idfv;
     if (_idfa)          d[@"idfa"]          = _idfa;
+    if (_proxyLink)     d[@"proxyLink"]     = _proxyLink;
     NSString *path = GBPrefsPath();
     [[NSFileManager defaultManager] createDirectoryAtPath:[path stringByDeletingLastPathComponent]
                               withIntermediateDirectories:YES attributes:nil error:nil];
@@ -49,6 +51,85 @@ static NSString *GBPrefsPath(void) {
     return [NSString stringWithFormat:@"%@ · iOS %@",
             _marketingName.length ? _marketingName : _deviceModel,
             _systemVersion.length ? _systemVersion : @"?"];
+}
+
+#pragma mark - Proxy
+
+/// Parses socks5://user:pass@host:port · http://user:pass@host:port · host:port:user:pass · host:port.
+/// Returns @{scheme,host,port,user,pass} or nil.
++ (NSDictionary *)parseProxy:(NSString *)raw {
+    NSString *s = [raw stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    s = [s stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"|> \t"]];
+    if (s.length == 0) return nil;
+
+    NSString *scheme = @"http";
+    NSString *rest = s;
+    NSString *lower = s.lowercaseString;
+    NSArray *pairs = @[ @[@"socks5://", @"socks5"], @[@"socks4://", @"socks5"], @[@"https://", @"http"], @[@"http://", @"http"] ];
+    for (NSArray *p in pairs) {
+        if ([lower hasPrefix:p[0]]) { scheme = p[1]; rest = [s substringFromIndex:[p[0] length]]; break; }
+    }
+
+    NSString *host = nil, *user = @"", *pass = @"";
+    NSInteger port = 0;
+
+    NSRange at = [rest rangeOfString:@"@" options:NSBackwardsSearch];
+    if (at.location != NSNotFound) {
+        NSString *cred = [rest substringToIndex:at.location];
+        NSString *hp = [rest substringFromIndex:at.location + 1];
+        NSArray *hpP = [hp componentsSeparatedByString:@":"];
+        if (hpP.count != 2) return nil;
+        host = hpP[0]; port = [hpP[1] integerValue];
+        NSRange c = [cred rangeOfString:@":"];
+        if (c.location != NSNotFound) { user = [cred substringToIndex:c.location]; pass = [cred substringFromIndex:c.location + 1]; }
+        else user = cred;
+    } else {
+        NSArray *parts = [rest componentsSeparatedByString:@":"];
+        if (parts.count >= 4) { host = parts[0]; port = [parts[1] integerValue]; user = parts[2];
+            pass = [[parts subarrayWithRange:NSMakeRange(3, parts.count - 3)] componentsJoinedByString:@":"]; }
+        else if (parts.count == 2) { host = parts[0]; port = [parts[1] integerValue]; }
+        else return nil;
+    }
+    if (host.length == 0 || port <= 0 || port > 65535) return nil;
+    return @{ @"scheme": scheme, @"host": host, @"port": @(port), @"user": user ?: @"", @"pass": pass ?: @"" };
+}
+
+- (BOOL)setProxyFromLink:(NSString *)link {
+    NSString *trimmed = [link stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (trimmed.length == 0) { _proxyLink = @""; [self save]; return YES; }
+    if (![GBStore parseProxy:trimmed]) return NO;
+    _proxyLink = [trimmed copy];
+    [self save];
+    return YES;
+}
+
+- (BOOL)hasProxy { return [GBStore parseProxy:_proxyLink] != nil; }
+
+- (NSString *)proxySummary {
+    NSDictionary *p = [GBStore parseProxy:_proxyLink];
+    if (!p) return @"Direct (no proxy)";
+    BOOL auth = [p[@"user"] length] > 0;
+    return [NSString stringWithFormat:@"%@ %@:%@%@", p[@"scheme"], p[@"host"], p[@"port"], auth ? @" (auth)" : @""];
+}
+
+- (NSDictionary *)proxyDictionary {
+    NSDictionary *p = [GBStore parseProxy:_proxyLink];
+    if (!p) return nil;
+    NSString *host = p[@"host"]; NSNumber *port = p[@"port"];
+    NSString *user = p[@"user"]; NSString *pass = p[@"pass"];
+    NSMutableDictionary *d = [NSMutableDictionary dictionary];
+    // connectionProxyDictionary / CFNetwork string keys (portable across iOS versions).
+    if ([p[@"scheme"] isEqualToString:@"socks5"]) {
+        d[@"SOCKSEnable"] = @1; d[@"SOCKSProxy"] = host; d[@"SOCKSPort"] = port;
+        if (user.length) d[@"SOCKSUser"] = user;
+        if (pass.length) d[@"SOCKSPassword"] = pass;
+    } else {
+        d[@"HTTPEnable"] = @1;  d[@"HTTPProxy"] = host;  d[@"HTTPPort"] = port;
+        d[@"HTTPSEnable"] = @1; d[@"HTTPSProxy"] = host; d[@"HTTPSPort"] = port;
+    }
+    if (user.length) d[@"kCFProxyUsername"] = user;
+    if (pass.length) d[@"kCFProxyPassword"] = pass;
+    return d;
 }
 
 // Plausible modern iPhones paired with a sensible iOS. hw.machine is the primary fingerprint.

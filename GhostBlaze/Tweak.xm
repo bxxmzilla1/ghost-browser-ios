@@ -5,6 +5,7 @@
 #import <errno.h>
 #import <sys/sysctl.h>
 #import <sys/utsname.h>
+#import <CFNetwork/CFNetwork.h>
 #import "GBStore.h"
 #import "GBMenu.h"
 
@@ -13,6 +14,9 @@
 // spoofed model is copied into a C buffer once in the constructor and the hooks only read it.
 static int  gEnabled = 0;
 static char gModel[64] = {0};
+// Built once in the constructor from the stored proxy (a data wipe + re-spoof relaunches the app,
+// so a proxy change always takes effect on the next cold start). nil = route traffic directly.
+static CFDictionaryRef gProxyDict = NULL;
 
 #pragma mark - C-level hardware model (hw.machine / hw.model)
 
@@ -38,6 +42,28 @@ static char gModel[64] = {0};
     }
     return r;
 }
+
+#pragma mark - Proxy (route the app through the identity's proxy)
+
+%hookf(CFDictionaryRef, CFNetworkCopySystemProxySettings) {
+    if (gEnabled && gProxyDict) return (CFDictionaryRef)CFRetain(gProxyDict);
+    return %orig;
+}
+
+%hook NSURLSessionConfiguration
+
+- (NSDictionary *)connectionProxyDictionary {
+    if (gEnabled && gProxyDict) return (__bridge NSDictionary *)gProxyDict;
+    return %orig;
+}
+
+- (void)setConnectionProxyDictionary:(NSDictionary *)dict {
+    // Force our proxy even when the app tries to set (or clear) its own.
+    if (gEnabled && gProxyDict) { %orig((__bridge NSDictionary *)gProxyDict); return; }
+    %orig;
+}
+
+%end
 
 #pragma mark - UIDevice
 
@@ -135,7 +161,9 @@ static void GBInstallGesture(void) {
             if (!store.hasIdentity) [store regenerateIdentity];
             const char *m = store.deviceModel.UTF8String;
             if (m) strlcpy(gModel, m, sizeof(gModel));
-            NSLog(@"[GhostBlaze] Active in %@ → %@", bundleID, store.summary);
+            NSDictionary *pd = [store proxyDictionary];
+            if (pd) gProxyDict = (CFDictionaryRef)CFBridgingRetain([pd copy]);
+            NSLog(@"[GhostBlaze] Active in %@ → %@ · proxy: %@", bundleID, store.summary, store.proxySummary);
         }
 
         %init;

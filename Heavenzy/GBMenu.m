@@ -19,14 +19,26 @@ static void GBWipeKeychain(void) {
                           (__bridge id)kSecClassKey,
                           (__bridge id)kSecClassIdentity ];
     for (id cls in classes) {
-        SecItemDelete((__bridge CFDictionaryRef)@{ (__bridge id)kSecClass: cls });
+        // kSecAttrSynchronizableAny also removes iCloud-Keychain-synced items, so a saved login
+        // cannot be pulled back from the cloud after the wipe.
+        SecItemDelete((__bridge CFDictionaryRef)@{
+            (__bridge id)kSecClass: cls,
+            (__bridge id)kSecAttrSynchronizable: (__bridge id)kSecAttrSynchronizableAny
+        });
     }
 }
 
-/// Factory-reset the host app: sandbox (Documents/Library/tmp), cookies, WebKit data, keychain.
-/// The tweak's own identity plist is rewritten immediately afterwards (see the wipe action), so the
-/// app's opt-in, spoofed device and proxy survive as a "fresh install behind the same proxy".
+/// Factory-reset the host app so it comes up as a brand-new install with no previous accounts:
+/// sandbox (Documents/Library/tmp), NSUserDefaults domain, cookies, WebKit data and keychain
+/// (including iCloud-synced items). iCloud key-value + ubiquity access is blocked by the tweak's
+/// hooks while spoofing is on, so nothing syncs the old accounts back.
 static void GBClearAppData(void) {
+    NSString *bundleID = [[NSBundle mainBundle] bundleIdentifier];
+    if (bundleID) {
+        [[NSUserDefaults standardUserDefaults] removePersistentDomainForName:bundleID];
+        [[NSUserDefaults standardUserDefaults] synchronize];
+    }
+
     NSString *home = NSHomeDirectory();
     GBRemoveDirContents([home stringByAppendingPathComponent:@"Documents"]);
     GBRemoveDirContents([home stringByAppendingPathComponent:@"Library"]);
@@ -48,22 +60,20 @@ static void GBQuit(void) {
     });
 }
 
-#pragma mark - Blaze-style panel
+#pragma mark - Heavenzy panel
 
-@interface GBPanelViewController : UIViewController <UITextFieldDelegate>
+@interface GBPanelViewController : UIViewController
 @property (nonatomic, strong) UIView *card;
 @property (nonatomic, strong) UILabel *deviceValue;
-@property (nonatomic, strong) UITextField *proxyField;
-@property (nonatomic, strong) UILabel *proxyStatus;
 @property (nonatomic, strong) UISwitch *enableSwitch;
 @end
 
 @implementation GBPanelViewController
 
-static UIColor *GBAccent(void)    { return [UIColor colorWithRed:0.98 green:0.42 blue:0.19 alpha:1.0]; } // blaze orange
-static UIColor *GBCardBG(void)    { return [UIColor colorWithRed:0.11 green:0.11 blue:0.12 alpha:1.0]; }
-static UIColor *GBFieldBG(void)   { return [UIColor colorWithRed:0.17 green:0.17 blue:0.19 alpha:1.0]; }
-static UIColor *GBSubtle(void)    { return [UIColor colorWithWhite:0.62 alpha:1.0]; }
+static UIColor *GBAccent(void)  { return [UIColor colorWithRed:0.55 green:0.45 blue:0.98 alpha:1.0]; } // heavenzy violet
+static UIColor *GBCardBG(void)  { return [UIColor colorWithRed:0.10 green:0.10 blue:0.13 alpha:1.0]; }
+static UIColor *GBFieldBG(void) { return [UIColor colorWithRed:0.17 green:0.17 blue:0.21 alpha:1.0]; }
+static UIColor *GBSubtle(void)  { return [UIColor colorWithWhite:0.64 alpha:1.0]; }
 
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -81,13 +91,12 @@ static UIColor *GBSubtle(void)    { return [UIColor colorWithWhite:0.62 alpha:1.
     self.card.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:self.card];
 
-    // Accent header strip.
     UIView *strip = [UIView new];
     strip.backgroundColor = GBAccent();
     strip.translatesAutoresizingMaskIntoConstraints = NO;
     [self.card addSubview:strip];
 
-    UILabel *title = [self label:@"GhostBlaze" size:20 weight:UIFontWeightBold color:UIColor.whiteColor];
+    UILabel *title = [self label:@"Heavenzy" size:20 weight:UIFontWeightBold color:UIColor.whiteColor];
     UILabel *subtitle = [self label:([[NSBundle mainBundle] bundleIdentifier] ?: @"") size:12 weight:UIFontWeightRegular color:GBSubtle()];
 
     UIButton *close = [UIButton buttonWithType:UIButtonTypeSystem];
@@ -97,68 +106,31 @@ static UIColor *GBSubtle(void)    { return [UIColor colorWithWhite:0.62 alpha:1.
     [close addTarget:self action:@selector(closeTapped) forControlEvents:UIControlEventTouchUpInside];
     close.translatesAutoresizingMaskIntoConstraints = NO;
 
-    // Device row.
     UILabel *deviceLabel = [self label:@"SPOOFED DEVICE" size:11 weight:UIFontWeightSemibold color:GBSubtle()];
     self.deviceValue = [self label:store.summary size:16 weight:UIFontWeightSemibold color:UIColor.whiteColor];
     self.deviceValue.numberOfLines = 2;
-    UIButton *randomize = [self pillButton:@"Randomize" filled:NO];
+    UIButton *randomize = [self pillButton:@"Randomize"];
     [randomize addTarget:self action:@selector(randomizeTapped) forControlEvents:UIControlEventTouchUpInside];
 
-    // Proxy.
-    UILabel *proxyLabel = [self label:@"PROXY (kept after wipe + re-spoof)" size:11 weight:UIFontWeightSemibold color:GBSubtle()];
-    self.proxyField = [UITextField new];
-    self.proxyField.text = store.proxyLink ?: @"";
-    self.proxyField.placeholder = @"socks5://user:pass@host:port";
-    self.proxyField.attributedPlaceholder = [[NSAttributedString alloc] initWithString:@"socks5://user:pass@host:port"
-        attributes:@{ NSForegroundColorAttributeName: [UIColor colorWithWhite:0.45 alpha:1.0] }];
-    self.proxyField.textColor = UIColor.whiteColor;
-    self.proxyField.font = [UIFont monospacedSystemFontOfSize:13 weight:UIFontWeightRegular];
-    self.proxyField.backgroundColor = GBFieldBG();
-    self.proxyField.autocapitalizationType = UITextAutocapitalizationTypeNone;
-    self.proxyField.autocorrectionType = UITextAutocorrectionTypeNo;
-    self.proxyField.keyboardType = UIKeyboardTypeURL;
-    self.proxyField.keyboardAppearance = UIKeyboardAppearanceDark;
-    self.proxyField.clearButtonMode = UITextFieldViewModeWhileEditing;
-    self.proxyField.delegate = self;
-    self.proxyField.translatesAutoresizingMaskIntoConstraints = NO;
-    self.proxyField.layer.cornerRadius = 10;
-    UIView *pad = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 12, 1)];
-    self.proxyField.leftView = pad; self.proxyField.leftViewMode = UITextFieldViewModeAlways;
-    [self.proxyField addTarget:self action:@selector(proxyChanged) forControlEvents:UIControlEventEditingChanged];
-
-    UIButton *paste = [self pillButton:@"Paste" filled:NO];
-    [paste addTarget:self action:@selector(pasteTapped) forControlEvents:UIControlEventTouchUpInside];
-
-    self.proxyStatus = [self label:store.proxySummary size:12 weight:UIFontWeightRegular color:GBSubtle()];
-    [self refreshProxyStatus];
-
-    // Enable row.
     UILabel *enableLabel = [self label:@"Spoof this app" size:16 weight:UIFontWeightMedium color:UIColor.whiteColor];
     self.enableSwitch = [UISwitch new];
     self.enableSwitch.onTintColor = GBAccent();
     self.enableSwitch.on = store.enabled;
     [self.enableSwitch addTarget:self action:@selector(enableChanged) forControlEvents:UIControlEventValueChanged];
-    self.enableSwitch.translatesAutoresizingMaskIntoConstraints = NO;
 
-    // Buttons.
     UIButton *apply = [self wideButton:@"Apply & Reopen" color:GBAccent() textColor:UIColor.whiteColor];
     [apply addTarget:self action:@selector(applyTapped) forControlEvents:UIControlEventTouchUpInside];
     UIButton *wipe = [self wideButton:@"Wipe data + re-spoof" color:[UIColor colorWithRed:0.22 green:0.13 blue:0.13 alpha:1.0]
                             textColor:[UIColor colorWithRed:1.0 green:0.42 blue:0.4 alpha:1.0]];
     [wipe addTarget:self action:@selector(wipeTapped) forControlEvents:UIControlEventTouchUpInside];
 
-    UILabel *foot = [self label:@"Changes take effect when the app reopens (IDs are read at launch). The proxy routes HTTP(S)/NSURLSession traffic."
+    UILabel *foot = [self label:@"“Wipe + re-spoof” deletes this app's data, saved logins, cookies and keychain (incl. iCloud) and rolls a new device. iCloud is blocked while spoofing is on, so old accounts can't sync back. Changes apply when the app reopens."
                            size:11 weight:UIFontWeightRegular color:GBSubtle()];
     foot.numberOfLines = 0;
 
-    // Layout via a vertical stack for the body.
     UIStackView *deviceRow = [[UIStackView alloc] initWithArrangedSubviews:@[self.deviceValue, randomize]];
     deviceRow.axis = UILayoutConstraintAxisHorizontal; deviceRow.spacing = 10; deviceRow.alignment = UIStackViewAlignmentCenter;
     [randomize setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
-
-    UIStackView *proxyRow = [[UIStackView alloc] initWithArrangedSubviews:@[self.proxyField, paste]];
-    proxyRow.axis = UILayoutConstraintAxisHorizontal; proxyRow.spacing = 8; proxyRow.alignment = UIStackViewAlignmentCenter;
-    [paste setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
 
     UIView *enableSpacer = [UIView new];
     UIStackView *enableRow = [[UIStackView alloc] initWithArrangedSubviews:@[enableLabel, enableSpacer, self.enableSwitch]];
@@ -166,9 +138,7 @@ static UIColor *GBSubtle(void)    { return [UIColor colorWithWhite:0.62 alpha:1.
 
     UIStackView *body = [[UIStackView alloc] initWithArrangedSubviews:@[
         deviceLabel, deviceRow,
-        [self spacer:6],
-        proxyLabel, proxyRow, self.proxyStatus,
-        [self spacer:6],
+        [self spacer:8],
         enableRow,
         [self spacer:4],
         apply, wipe, foot
@@ -188,7 +158,7 @@ static UIColor *GBSubtle(void)    { return [UIColor colorWithWhite:0.62 alpha:1.
     CGFloat cardW = MIN(360, UIScreen.mainScreen.bounds.size.width - 32);
     [NSLayoutConstraint activateConstraints:@[
         [self.card.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
-        [self.card.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor constant:-30],
+        [self.card.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor constant:-20],
         [self.card.widthAnchor constraintEqualToConstant:cardW],
 
         [strip.topAnchor constraintEqualToAnchor:self.card.topAnchor],
@@ -212,7 +182,6 @@ static UIColor *GBSubtle(void)    { return [UIColor colorWithWhite:0.62 alpha:1.
         [body.trailingAnchor constraintEqualToAnchor:self.card.trailingAnchor constant:-18],
         [body.bottomAnchor constraintEqualToAnchor:self.card.bottomAnchor constant:-18],
 
-        [self.proxyField.heightAnchor constraintEqualToConstant:40],
         [apply.heightAnchor constraintEqualToConstant:46],
         [wipe.heightAnchor constraintEqualToConstant:46],
     ]];
@@ -232,12 +201,12 @@ static UIColor *GBSubtle(void)    { return [UIColor colorWithWhite:0.62 alpha:1.
     return v;
 }
 
-- (UIButton *)pillButton:(NSString *)title filled:(BOOL)filled {
+- (UIButton *)pillButton:(NSString *)title {
     UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
     [b setTitle:title forState:UIControlStateNormal];
     b.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
-    [b setTitleColor:(filled ? UIColor.whiteColor : GBAccent()) forState:UIControlStateNormal];
-    b.backgroundColor = filled ? GBAccent() : GBFieldBG();
+    [b setTitleColor:GBAccent() forState:UIControlStateNormal];
+    b.backgroundColor = GBFieldBG();
     b.layer.cornerRadius = 8;
     b.contentEdgeInsets = UIEdgeInsetsMake(8, 14, 8, 14);
     return b;
@@ -260,29 +229,11 @@ static UIColor *GBSubtle(void)    { return [UIColor colorWithWhite:0.62 alpha:1.
     if (!CGRectContainsPoint(self.card.frame, p)) { [self closeTapped]; }
 }
 
-- (void)closeTapped { [self.proxyField resignFirstResponder]; [self dismissViewControllerAnimated:YES completion:nil]; }
+- (void)closeTapped { [self dismissViewControllerAnimated:YES completion:nil]; }
 
 - (void)randomizeTapped {
     [[GBStore shared] regenerateIdentity];
     self.deviceValue.text = [GBStore shared].summary;
-}
-
-- (void)proxyChanged {
-    [[GBStore shared] setProxyFromLink:self.proxyField.text];
-    [self refreshProxyStatus];
-}
-
-- (void)pasteTapped {
-    NSString *s = UIPasteboard.generalPasteboard.string;
-    if (s.length) { self.proxyField.text = [s stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]]; [self proxyChanged]; }
-}
-
-- (void)refreshProxyStatus {
-    GBStore *store = [GBStore shared];
-    NSString *text = self.proxyField.text ?: @"";
-    if (text.length == 0) { self.proxyStatus.text = @"Direct — your real IP is used"; self.proxyStatus.textColor = [UIColor colorWithRed:1 green:0.5 blue:0.4 alpha:1]; return; }
-    if (store.hasProxy) { self.proxyStatus.text = [@"✓ " stringByAppendingString:store.proxySummary]; self.proxyStatus.textColor = [UIColor colorWithRed:0.4 green:0.85 blue:0.5 alpha:1]; }
-    else { self.proxyStatus.text = @"⚠ Unrecognised proxy format"; self.proxyStatus.textColor = [UIColor colorWithRed:1 green:0.7 blue:0.3 alpha:1]; }
 }
 
 - (void)enableChanged {
@@ -292,28 +243,23 @@ static UIColor *GBSubtle(void)    { return [UIColor colorWithWhite:0.62 alpha:1.
 }
 
 - (void)applyTapped {
-    [[GBStore shared] setProxyFromLink:self.proxyField.text];
-    [[GBStore shared] installProxyCredential];
     [self dismissViewControllerAnimated:YES completion:^{ GBQuit(); }];
 }
 
 - (void)wipeTapped {
-    [[GBStore shared] setProxyFromLink:self.proxyField.text];
     UIAlertController *c = [UIAlertController alertControllerWithTitle:@"Wipe this app?"
-        message:@"Deletes this app's data, cookies, web data and keychain, then rolls a brand-new device. Your spoof settings and proxy are kept. The app closes — reopen it as a fresh, spoofed install behind the proxy."
+        message:@"Deletes this app's data, saved logins, cookies, web data and keychain (including iCloud-synced items), then rolls a brand-new device. The app closes — reopen it as a fresh, spoofed install with no previous accounts."
         preferredStyle:UIAlertControllerStyleAlert];
     [c addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [c addAction:[UIAlertAction actionWithTitle:@"Wipe + re-spoof" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *x) {
         GBStore *store = [GBStore shared];
         store.enabled = YES;              // stay opted-in after the wipe
         GBClearAppData();
-        [store regenerateIdentity];       // rewrites the identity plist (enabled + proxy + new device)
+        [store regenerateIdentity];       // rewrites the identity plist (enabled + new device)
         GBQuit();
     }]];
     [self presentViewController:c animated:YES completion:nil];
 }
-
-- (BOOL)textFieldShouldReturn:(UITextField *)textField { [textField resignFirstResponder]; return YES; }
 
 @end
 

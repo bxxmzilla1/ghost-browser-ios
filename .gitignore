@@ -11,11 +11,15 @@ iOSApp/*.xcodeproj
 iOSApp/Info.plist
 
 # Theos tweak build outputs
-GhostBlaze/.theos/
-GhostBlaze/packages/
-GhostBlaze/obj/
+Heavenzy/.theos/
+Heavenzy/packages/
+Heavenzy/obj/
 *.deb
 
 # OS junk
 .DS_Store
 Thumbs.db
+
+# Local installer, do not commit (over GitHub 100MB limit)
+Camoufox Panel Setup*.exe
+*.exe

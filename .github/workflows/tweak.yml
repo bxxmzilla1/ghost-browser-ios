@@ -3,7 +3,7 @@ name: tweak
 on:
   push:
     paths:
-      - 'GhostBlaze/**'
+      - 'Heavenzy/**'
       - '.github/workflows/tweak.yml'
   workflow_dispatch:
 
@@ -36,17 +36,17 @@ jobs:
 
       - name: Build rootless .deb
         run: |
-          cd GhostBlaze
+          cd Heavenzy
           make package THEOS_PACKAGE_SCHEME=rootless FINALPACKAGE=1
 
       - name: Collect package
         run: |
           mkdir -p out
-          cp GhostBlaze/packages/*.deb out/
+          cp Heavenzy/packages/*.deb out/
           ls -la out
 
       - uses: actions/upload-artifact@v4
         with:
-          name: GhostBlaze-deb
+          name: Heavenzy-deb
           path: out/*.deb
           if-no-files-found: error

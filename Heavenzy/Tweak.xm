@@ -5,7 +5,6 @@
 #import <errno.h>
 #import <sys/sysctl.h>
 #import <sys/utsname.h>
-#import <CFNetwork/CFNetwork.h>
 #import "GBStore.h"
 #import "GBMenu.h"
 
@@ -14,9 +13,6 @@
 // spoofed model is copied into a C buffer once in the constructor and the hooks only read it.
 static int  gEnabled = 0;
 static char gModel[64] = {0};
-// Built once in the constructor from the stored proxy (a data wipe + re-spoof relaunches the app,
-// so a proxy change always takes effect on the next cold start). nil = route traffic directly.
-static CFDictionaryRef gProxyDict = NULL;
 
 #pragma mark - C-level hardware model (hw.machine / hw.model)
 
@@ -43,30 +39,34 @@ static CFDictionaryRef gProxyDict = NULL;
     return r;
 }
 
-#pragma mark - Proxy (route the app through the identity's proxy)
+#pragma mark - Block iCloud (so wiped accounts can't be restored from the cloud)
 
-%hookf(CFDictionaryRef, CFNetworkCopySystemProxySettings) {
-    if (gEnabled && gProxyDict) return (CFDictionaryRef)CFRetain(gProxyDict);
+// Instagram's "saved accounts" come back because they are mirrored to the iCloud key-value store
+// and iCloud Keychain. While spoofing is on we make the cloud store look permanently empty and
+// swallow writes, so a wiped device stays wiped and nothing syncs back.
+%hook NSUbiquitousKeyValueStore
+
+- (id)objectForKey:(NSString *)key { if (gEnabled) return nil; return %orig; }
+- (NSString *)stringForKey:(NSString *)key { if (gEnabled) return nil; return %orig; }
+- (NSArray *)arrayForKey:(NSString *)key { if (gEnabled) return nil; return %orig; }
+- (NSDictionary *)dictionaryForKey:(NSString *)key { if (gEnabled) return nil; return %orig; }
+- (NSData *)dataForKey:(NSString *)key { if (gEnabled) return nil; return %orig; }
+- (NSDictionary *)dictionaryRepresentation { if (gEnabled) return @{}; return %orig; }
+- (void)setObject:(id)obj forKey:(NSString *)key { if (gEnabled) return; %orig; }
+- (void)setString:(NSString *)s forKey:(NSString *)key { if (gEnabled) return; %orig; }
+- (void)setData:(NSData *)d forKey:(NSString *)key { if (gEnabled) return; %orig; }
+- (void)setArray:(NSArray *)a forKey:(NSString *)key { if (gEnabled) return; %orig; }
+- (void)setDictionary:(NSDictionary *)d forKey:(NSString *)key { if (gEnabled) return; %orig; }
+- (BOOL)synchronize { if (gEnabled) return YES; return %orig; }
+
+%end
+
+// Hide the iCloud (ubiquity) container entirely, so file-based iCloud state is invisible too.
+%hook NSFileManager
+- (NSURL *)URLForUbiquityContainerIdentifier:(NSString *)identifier {
+    if (gEnabled) return nil;
     return %orig;
 }
-
-%hook NSURLSessionConfiguration
-
-- (NSDictionary *)connectionProxyDictionary {
-    if (gEnabled && gProxyDict) return (__bridge NSDictionary *)gProxyDict;
-    return %orig;
-}
-
-- (void)setConnectionProxyDictionary:(NSDictionary *)dict {
-    // Force our proxy even when the app tries to set (or clear) its own.
-    if (gEnabled && gProxyDict) {
-        NSDictionary *forced = (__bridge NSDictionary *)gProxyDict;
-        %orig(forced);
-        return;
-    }
-    %orig;
-}
-
 %end
 
 #pragma mark - UIDevice
@@ -140,13 +140,13 @@ static void GBInstallGesture(void) {
     if (!key) return;
     // Avoid stacking recognizers if the window becomes active repeatedly.
     for (UIGestureRecognizer *r in key.gestureRecognizers) {
-        if ([r.name isEqualToString:@"GhostBlazeMenu"]) return;
+        if ([r.name isEqualToString:@"HeavenzyMenu"]) return;
     }
     UILongPressGestureRecognizer *lp = [[UILongPressGestureRecognizer alloc]
         initWithTarget:[GBGestureTarget shared] action:@selector(handle:)];
     lp.numberOfTouchesRequired = 2;
     lp.minimumPressDuration = 0.8;
-    lp.name = @"GhostBlazeMenu";
+    lp.name = @"HeavenzyMenu";
     lp.cancelsTouchesInView = NO;
     [key addGestureRecognizer:lp];
 }
@@ -155,6 +155,7 @@ static void GBInstallGesture(void) {
 
 %ctor {
     @autoreleasepool {
+        NSLog(@"[Heavenzy] Loading v1.0");
         NSString *bundleID = [[NSBundle mainBundle] bundleIdentifier];
         // Never touch system processes (SpringBoard, Preferences, daemons using UIKit).
         if (!bundleID || [bundleID hasPrefix:@"com.apple."]) return;
@@ -165,10 +166,7 @@ static void GBInstallGesture(void) {
             if (!store.hasIdentity) [store regenerateIdentity];
             const char *m = store.deviceModel.UTF8String;
             if (m) strlcpy(gModel, m, sizeof(gModel));
-            NSDictionary *pd = [store proxyDictionary];
-            if (pd) gProxyDict = (CFDictionaryRef)CFBridgingRetain([pd copy]);
-            [store installProxyCredential];   // answer the proxy 407 automatically (no Settings prompt)
-            NSLog(@"[GhostBlaze] Active in %@ → %@ · proxy: %@", bundleID, store.summary, store.proxySummary);
+            NSLog(@"[Heavenzy] Active in %@ → %@", bundleID, store.summary);
         }
 
         %init;

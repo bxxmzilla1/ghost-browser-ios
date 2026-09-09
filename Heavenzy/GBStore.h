@@ -20,23 +20,6 @@
 @property (nonatomic, copy) NSString *idfv;            // identifierForVendor (UPPERCASE UUID)
 @property (nonatomic, copy) NSString *idfa;            // advertisingIdentifier (UPPERCASE UUID)
 
-/// Proxy the app's traffic is routed through. Part of the pinned identity — kept across a
-/// data wipe + re-spoof so the fresh install comes up already behind the same proxy.
-@property (nonatomic, copy) NSString *proxyLink;       // raw, as pasted (empty = direct)
-@property (nonatomic, readonly) BOOL hasProxy;
-@property (nonatomic, readonly) NSString *proxySummary; // "socks5 host:port (auth)" / "Direct"
-
-/// Store a proxy link (any of: socks5://user:pass@host:port · http://host:port · host:port:user:pass).
-/// Empty string clears it. Returns NO if the text is non-empty but unparseable.
-- (BOOL)setProxyFromLink:(NSString *)link;
-
-/// connectionProxyDictionary / CFNetwork system-proxy form for the stored proxy (nil if none).
-- (NSDictionary *)proxyDictionary;
-
-/// Seed the shared credential storage with the proxy's user/pass for its protection space, so
-/// CFNetwork answers the proxy's 407 auth challenge automatically instead of prompting in Settings.
-- (void)installProxyCredential;
-
 /// YES once a device identity has been chosen.
 @property (nonatomic, readonly) BOOL hasIdentity;
 

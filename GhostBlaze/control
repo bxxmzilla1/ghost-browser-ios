@@ -1,9 +1,0 @@
-Package: com.ghost.blaze
-Name: GhostBlaze
-Version: 1.0.0
-Architecture: iphoneos-arm64
-Description: Per-app device spoofer (model, iOS, IDFV, IDFA) with wipe + re-spoof, Blaze-style. Open the in-app menu with a two-finger long-press.
-Maintainer: Ghost
-Author: Ghost
-Section: Tweaks
-Depends: ellekit

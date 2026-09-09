@@ -110,25 +110,33 @@ static NSMapTable<UIWindowScene *, GBFloatingButton *> *gBubbles;
 
 - (void)pan:(UIPanGestureRecognizer *)g {
     CGPoint t = [g translationInView:nil];
-    UIGestureRecognizerState st = g.state;
-    if (st == UIGestureRecognizerStateBegan) {
-        self.dragging = YES;
-        self.dragStart = self.frame.origin;
-        [UIView animateWithDuration:0.12 animations:^{ self.bubble.transform = CGAffineTransformMakeScale(1.12, 1.12); }];
-    } else if (st == UIGestureRecognizerStateChanged) {
-        CGRect f = self.frame;
-        f.origin = CGPointMake(self.dragStart.x + t.x, self.dragStart.y + t.y);
-        self.frame = f;   // no clamp while moving so it follows the finger; clamped on release
-    } else if (st == UIGestureRecognizerStateEnded || st == UIGestureRecognizerStateCancelled || st == UIGestureRecognizerStateFailed) {
-        self.dragging = NO;
-        CGRect target = [self clamp:self.frame];
-        [UIView animateWithDuration:0.2 animations:^{
-            self.frame = target;
-            self.bubble.transform = CGAffineTransformIdentity;
-        }];
-        GBStore *store = [GBStore shared];
-        store.floatingOrigin = target.origin;
-        [store save];
+    switch (g.state) {
+        case UIGestureRecognizerStateBegan:
+            self.dragging = YES;
+            self.dragStart = self.frame.origin;
+            [UIView animateWithDuration:0.12 animations:^{ self.bubble.transform = CGAffineTransformMakeScale(1.12, 1.12); }];
+            break;
+        case UIGestureRecognizerStateChanged: {
+            CGRect f = self.frame;
+            f.origin = CGPointMake(self.dragStart.x + t.x, self.dragStart.y + t.y);
+            self.frame = f;   // no clamp while moving so it follows the finger; clamped on release
+            break;
+        }
+        case UIGestureRecognizerStateEnded:
+        case UIGestureRecognizerStateCancelled:
+        case UIGestureRecognizerStateFailed: {
+            self.dragging = NO;
+            CGRect target = [self clamp:self.frame];
+            [UIView animateWithDuration:0.2 animations:^{
+                self.frame = target;
+                self.bubble.transform = CGAffineTransformIdentity;
+            }];
+            GBStore *store = [GBStore shared];
+            store.floatingOrigin = target.origin;
+            [store save];
+            break;
+        }
+        default: break;
     }
 }
 

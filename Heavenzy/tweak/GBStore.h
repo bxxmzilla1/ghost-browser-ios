@@ -1,8 +1,8 @@
 #import <Foundation/Foundation.h>
 #import <CoreGraphics/CoreGraphics.h>
 
-/// Per-app spoofed device identity, modelled after Sessions X: every attribute (screen, scale,
-/// CPU cores, memory) is bound to the chosen device so nothing contradicts the model string.
+/// Per-app device *identity* (Blaze-style): the real iPhone is kept, but the identifiers apps use to
+/// recognise a device / a returning install are reset so the app sees a brand-new phone.
 /// Persisted inside the *host app's own* container (Library/Preferences/com.heavenzy.plist) so it is
 /// stable across normal relaunches and disappears on a full data wipe — at which point
 /// "wipe + re-spoof" writes a fresh one.
@@ -28,11 +28,14 @@
 @property (nonatomic, assign) NSInteger cpuCores;      // hw.ncpu / processorCount
 @property (nonatomic, assign) NSInteger memoryGB;      // physical RAM in GB
 
-// Spoofed identifiers.
+// Reset identifiers — the only things Heavenzy changes (the real hardware above is left alone).
 @property (nonatomic, copy) NSString *idfv;            // identifierForVendor (UPPERCASE UUID)
 @property (nonatomic, copy) NSString *idfa;            // advertisingIdentifier (UPPERCASE UUID)
 @property (nonatomic, copy) NSString *udid;            // MobileGestalt UniqueDeviceID
 @property (nonatomic, copy) NSString *serialNumber;    // MobileGestalt SerialNumber
+@property (nonatomic, copy) NSString *wifiAddress;     // MobileGestalt WifiAddress (lowercase MAC)
+@property (nonatomic, copy) NSString *bluetoothAddress;// MobileGestalt BluetoothAddress (lowercase MAC)
+@property (nonatomic, copy) NSString *imei;            // MobileGestalt InternationalMobileEquipmentIdentity
 
 // Extended device signals (Ghost-style), each consistent with the chosen identity / region.
 @property (nonatomic, assign) double  batteryLevel;    // 0.0–1.0
@@ -53,10 +56,10 @@
 /// Physical memory in bytes (memoryGB * 1024^3) — what hw.memsize / physicalMemory should report.
 @property (nonatomic, readonly) unsigned long long memoryBytes;
 
-/// YES once a device identity has been chosen.
+/// YES once a fresh identity has been generated.
 @property (nonatomic, readonly) BOOL hasIdentity;
 
-/// Short label, e.g. "iPhone 15 Pro · iOS 18.6.1".
+/// Short label, e.g. "New identity · SN F2LX…".
 @property (nonatomic, readonly) NSString *summary;
 
 /// Load prefs from the host app container.
@@ -64,11 +67,10 @@
 /// Persist current values.
 - (void)save;
 
-/// Roll a brand-new random iPhone (model + iOS + screen + cores + memory) and fresh IDFV/IDFA. Saves.
+/// Roll a brand-new identity (fresh IDFV/IDFA/UDID/serial/MACs/IMEI). Real hardware is untouched. Saves.
 - (void)regenerateIdentity;
 
-/// Apply an identity dictionary in the shared HZDevice schema (model,name,ios,w,h,scale,cores,mem,
-/// idfv,idfa,udid,serial,batteryLevel,batteryCharging,carrierName,mcc,mnc,iso,timeZone,localeId).
+/// Apply an identity dictionary in the shared HZDevice schema (idfv,idfa,udid,serial,wifi,bluetooth,imei).
 - (void)applyIdentityDict:(NSDictionary *)identity;
 
 @end

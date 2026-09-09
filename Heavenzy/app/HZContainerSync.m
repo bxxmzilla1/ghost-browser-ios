@@ -36,30 +36,26 @@
     d[@"enabled"] = @(enabled);
     if (wipePending) d[@"wipePending"] = @YES; else [d removeObjectForKey:@"wipePending"];
 
+    // Strip any legacy hardware-profile keys a previous version may have written — Heavenzy no longer
+    // changes the model, so these must never linger.
+    for (NSString *legacy in @[@"deviceModel", @"marketingName", @"systemVersion", @"screenPointsW",
+                               @"screenPointsH", @"scaleFactor", @"cpuCores", @"memoryGB",
+                               @"batteryLevel", @"batteryCharging", @"carrierName", @"mcc", @"mnc",
+                               @"iso", @"timeZone", @"localeId"]) {
+        [d removeObjectForKey:legacy];
+    }
+
     // Map the shared HZDevice identity schema → the GBStore container keys the tweak reads.
     NSDictionary *i = [identity isKindOfClass:NSDictionary.class] ? identity : @{};
     void (^set)(NSString *, id) = ^(NSString *k, id v) { if (v) d[k] = v; };
-    set(@"deviceModel",   i[@"model"]);
-    set(@"marketingName", i[@"name"]);
-    set(@"systemVersion", i[@"ios"]);
-    set(@"screenPointsW", i[@"w"]);
-    set(@"screenPointsH", i[@"h"]);
-    set(@"scaleFactor",   i[@"scale"]);
-    set(@"cpuCores",      i[@"cores"]);
-    set(@"memoryGB",      i[@"mem"]);
-    set(@"idfv",          i[@"idfv"]);
-    set(@"idfa",          i[@"idfa"]);
-    set(@"udid",          i[@"udid"]);
-    set(@"serial",        i[@"serial"]);
-    if (i[@"batteryLevel"])    d[@"batteryLevel"]    = i[@"batteryLevel"];
-    if (i[@"batteryCharging"]) d[@"batteryCharging"] = i[@"batteryCharging"];
-    set(@"carrierName",   i[@"carrierName"]);
-    set(@"mcc",           i[@"mcc"]);
-    set(@"mnc",           i[@"mnc"]);
-    set(@"iso",           i[@"iso"]);
-    set(@"timeZone",      i[@"timeZone"]);
-    set(@"localeId",      i[@"localeId"]);
-    if (!d[@"deviceName"]) d[@"deviceName"] = @"iPhone";
+    set(@"idfv",      i[@"idfv"]);
+    set(@"idfa",      i[@"idfa"]);
+    set(@"udid",      i[@"udid"]);
+    set(@"serial",    i[@"serial"]);
+    set(@"wifi",      i[@"wifi"]);
+    set(@"bluetooth", i[@"bluetooth"]);
+    set(@"imei",      i[@"imei"]);
+    d[@"deviceName"] = @"iPhone";
 
     return [d writeToFile:path atomically:YES];
 }

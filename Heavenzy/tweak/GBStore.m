@@ -34,6 +34,9 @@ static NSString *GBPrefsPath(void) {
     _idfa          = [d[@"idfa"] copy];
     _udid          = [d[@"udid"] copy];
     _serialNumber  = [d[@"serial"] copy];
+    _wifiAddress   = [d[@"wifi"] copy];
+    _bluetoothAddress = [d[@"bluetooth"] copy];
+    _imei          = [d[@"imei"] copy];
     _batteryLevel    = d[@"batteryLevel"] ? [d[@"batteryLevel"] doubleValue] : 0.72;
     _batteryCharging = [d[@"batteryCharging"] boolValue];
     _carrierName   = [d[@"carrierName"] copy];
@@ -62,30 +65,23 @@ static NSString *GBPrefsPath(void) {
     }
 }
 
-// Maps the shared HZDevice-schema identity onto this store's fields.
+// Maps the shared HZDevice-schema identity onto this store's fields. Only identifiers are applied —
+// the real hardware is kept — and any stale hardware fields from an older build are cleared so they
+// can never spoof the model again.
 - (void)applyIdentityDict:(NSDictionary *)i {
     if (![i isKindOfClass:NSDictionary.class]) return;
-    _deviceModel   = [i[@"model"] copy];
-    _marketingName = [i[@"name"] copy];
-    _systemVersion = [i[@"ios"] copy];
-    _screenPointsW = [i[@"w"] integerValue];
-    _screenPointsH = [i[@"h"] integerValue];
-    _scaleFactor   = [i[@"scale"] integerValue];
-    _cpuCores      = [i[@"cores"] integerValue];
-    _memoryGB      = [i[@"mem"] integerValue];
     _idfv          = [i[@"idfv"] copy];
     _idfa          = [i[@"idfa"] copy];
     _udid          = [i[@"udid"] copy];
     _serialNumber  = [i[@"serial"] copy];
-    if (i[@"batteryLevel"])    _batteryLevel = [i[@"batteryLevel"] doubleValue];
-    _batteryCharging = [i[@"batteryCharging"] boolValue];
-    _carrierName   = [i[@"carrierName"] copy];
-    _mcc           = [i[@"mcc"] copy];
-    _mnc           = [i[@"mnc"] copy];
-    _isoCountryCode = [i[@"iso"] copy];
-    _timeZoneName  = [i[@"timeZone"] copy];
-    _localeId      = [i[@"localeId"] copy];
-    if (!_deviceName.length) _deviceName = @"iPhone";
+    _wifiAddress   = [i[@"wifi"] copy];
+    _bluetoothAddress = [i[@"bluetooth"] copy];
+    _imei          = [i[@"imei"] copy];
+    // Explicitly drop any legacy hardware-profile spoofing.
+    _deviceModel = nil; _marketingName = nil; _systemVersion = nil;
+    _screenPointsW = 0; _screenPointsH = 0; _scaleFactor = 0; _cpuCores = 0; _memoryGB = 0;
+    _carrierName = nil; _mcc = nil; _mnc = nil; _isoCountryCode = nil; _timeZoneName = nil; _localeId = nil;
+    _deviceName    = @"iPhone";   // default fresh-device name (drops "<user>'s iPhone")
 }
 
 - (void)save {
@@ -105,6 +101,9 @@ static NSString *GBPrefsPath(void) {
     if (_idfa)          d[@"idfa"]          = _idfa;
     if (_udid)          d[@"udid"]          = _udid;
     if (_serialNumber)  d[@"serial"]        = _serialNumber;
+    if (_wifiAddress)   d[@"wifi"]          = _wifiAddress;
+    if (_bluetoothAddress) d[@"bluetooth"]  = _bluetoothAddress;
+    if (_imei)          d[@"imei"]          = _imei;
     d[@"batteryLevel"]    = @(_batteryLevel);
     d[@"batteryCharging"] = @(_batteryCharging);
     if (_carrierName)   d[@"carrierName"]   = _carrierName;
@@ -125,27 +124,23 @@ static NSString *GBPrefsPath(void) {
 
 - (void)setEnabled:(BOOL)enabled { _enabled = enabled; [self save]; }
 
-- (BOOL)hasIdentity { return _deviceModel.length > 0; }
+- (BOOL)hasIdentity { return _serialNumber.length > 0 || _udid.length > 0 || _idfv.length > 0; }
 
 - (NSInteger)nativePixelsW { return _screenPointsW * (_scaleFactor ?: 1); }
 - (NSInteger)nativePixelsH { return _screenPointsH * (_scaleFactor ?: 1); }
 - (unsigned long long)memoryBytes { return (unsigned long long)_memoryGB * 1024ULL * 1024ULL * 1024ULL; }
 
 - (NSString *)summary {
-    if (!self.hasIdentity) return @"Not spoofed yet";
-    return [NSString stringWithFormat:@"%@ · iOS %@",
-            _marketingName.length ? _marketingName : _deviceModel,
-            _systemVersion.length ? _systemVersion : @"?"];
+    if (!self.hasIdentity) return @"No new identity yet";
+    return [NSString stringWithFormat:@"New identity · SN %@", _serialNumber.length ? _serialNumber : @"?"];
 }
 
 - (void)regenerateIdentity {
-    // Uses the shared HZDevice generator (same pool the control app uses) so the tweak and app agree.
+    // Shared HZDevice generator (same one the control app uses) so the tweak and app agree.
     [self applyIdentityDict:HZGenerateIdentity()];
     [self save];
-    NSLog(@"[Heavenzy] New spoofed device: %@ (%@) iOS %@ · %ldx%ld@%ldx · %ld cores · %ld GB · %@ · %@ · UDID %@",
-          _marketingName, _deviceModel, _systemVersion,
-          (long)self.nativePixelsW, (long)self.nativePixelsH, (long)_scaleFactor, (long)_cpuCores, (long)_memoryGB,
-          _carrierName, _timeZoneName, _udid);
+    NSLog(@"[Heavenzy] New identity: SN %@ · UDID %@ · IDFV %@ · IDFA %@ · Wi-Fi %@ · BT %@ · IMEI %@",
+          _serialNumber, _udid, _idfv, _idfa, _wifiAddress, _bluetoothAddress, _imei);
 }
 
 @end

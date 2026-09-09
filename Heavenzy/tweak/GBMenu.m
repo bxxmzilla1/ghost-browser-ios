@@ -168,12 +168,12 @@ static UIButton *GBWide(NSString *title, UIColor *bg, UIColor *fg) {
     UIButton *wipe = GBWide(@"Wipe data + re-spoof", GBAccent(), UIColor.whiteColor);
     [wipe addTarget:self action:@selector(wipeTapped) forControlEvents:UIControlEventTouchUpInside];
 
-    UILabel *foot = GBLabel(@"Deletes this app's data, saved logins, cookies and keychain (incl. iCloud), applies the device shown above and reopens the app as a fresh install. Tap Randomize first to roll a different device. iCloud + returning-device checks are blocked while spoofing is on, so the app can't tell it was installed here before.",
+    UILabel *foot = GBLabel(@"Keeps your real iPhone model but resets the identity (serial, UDID, IDFV, IDFA, Wi-Fi/Bluetooth MAC, IMEI). Deletes this app's data, saved logins, cookies and keychain (incl. iCloud) and reopens it as a fresh install with the identity above. Tap Randomize to roll a new one. iCloud + returning-device checks are blocked while on, so the app can't tell it was installed here before.",
                             11, UIFontWeightRegular, GBSubtle());
     foot.numberOfLines = 0;
 
     NSMutableArray *rows = [@[
-        GBLabel(@"SPOOFED DEVICE", 11, UIFontWeightSemibold, GBSubtle()), deviceRow, self.detail,
+        GBLabel(@"DEVICE IDENTITY", 11, UIFontWeightSemibold, GBSubtle()), deviceRow, self.detail,
         GBSpacer(8), enableRow, GBSpacer(4) ] mutableCopy];
 
     // Instagram-only: export the saved auth headers (Authorization / IG-U-DS-USER-ID / X-MID /
@@ -223,11 +223,10 @@ static UIButton *GBWide(NSString *title, UIColor *bg, UIColor *fg) {
 - (NSString *)detailText {
     GBStore *s = [GBStore shared];
     if (!s.hasIdentity) return @"";
-    return [NSString stringWithFormat:@"%@ · %ld×%ld px @%ldx · %ld cores · %ld GB\n%@ · %@ · battery %d%%%@",
-            s.deviceModel, (long)s.nativePixelsW, (long)s.nativePixelsH,
-            (long)s.scaleFactor, (long)s.cpuCores, (long)s.memoryGB,
-            s.carrierName ?: @"—", s.timeZoneName ?: @"—",
-            (int)(s.batteryLevel * 100), s.batteryCharging ? @" ⚡" : @""];
+    // Same real iPhone — only these identifiers are reset.
+    return [NSString stringWithFormat:@"Serial %@\nUDID %@\nIDFV %@\nIDFA %@\nWi-Fi %@ · BT %@\nIMEI %@",
+            s.serialNumber ?: @"—", s.udid ?: @"—", s.idfv ?: @"—", s.idfa ?: @"—",
+            s.wifiAddress ?: @"—", s.bluetoothAddress ?: @"—", s.imei ?: @"—"];
 }
 
 #pragma mark Actions
@@ -280,7 +279,7 @@ static UIButton *GBWide(NSString *title, UIColor *bg, UIColor *fg) {
     if (!store.hasIdentity) { [store regenerateIdentity]; self.deviceValue.text = store.summary; self.detail.text = [self detailText]; }
 
     UIAlertController *c = [UIAlertController alertControllerWithTitle:@"Wipe + re-spoof?"
-        message:[NSString stringWithFormat:@"Deletes this app's data, saved logins, cookies, web data and keychain (including iCloud-synced items), applies “%@” and reopens the app as a fresh install with no previous accounts.", store.summary]
+        message:[NSString stringWithFormat:@"Deletes this app's data, saved logins, cookies, web data and keychain (including iCloud-synced items), applies “%@” and reopens the app as a fresh install with no previous accounts. Your real iPhone model is unchanged.", store.summary]
         preferredStyle:UIAlertControllerStyleAlert];
     [c addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [c addAction:[UIAlertAction actionWithTitle:@"Wipe + re-spoof" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *x) {

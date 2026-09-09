@@ -1,58 +1,11 @@
 #import "HZDevice.h"
 #import <string.h>
 
+// The device pool is retained for reference/compat but is NOT used to change the model any more:
+// Heavenzy keeps the real iPhone and only resets the per-device identity (Blaze-style).
 NSArray<NSDictionary *> *HZDevicePool(void) {
     static NSArray *pool; static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        NSArray<NSArray *> *rows = @[
-            //  model         marketing              iOS         W    H  scale cores mem
-            @[@"iPhone12,1", @"iPhone 11",          @"16.7.10", @414, @896, @2, @6, @4],
-            @[@"iPhone12,3", @"iPhone 11 Pro",      @"16.7.10", @375, @812, @3, @6, @4],
-            @[@"iPhone12,5", @"iPhone 11 Pro Max",  @"16.7.10", @414, @896, @3, @6, @4],
-            @[@"iPhone13,1", @"iPhone 12 mini",     @"17.6.1",  @375, @812, @3, @6, @4],
-            @[@"iPhone13,2", @"iPhone 12",          @"17.6.1",  @390, @844, @3, @6, @4],
-            @[@"iPhone13,3", @"iPhone 12 Pro",      @"17.6.1",  @390, @844, @3, @6, @6],
-            @[@"iPhone13,4", @"iPhone 12 Pro Max",  @"17.6.1",  @428, @926, @3, @6, @6],
-            @[@"iPhone14,4", @"iPhone 13 mini",     @"17.6.1",  @375, @812, @3, @6, @4],
-            @[@"iPhone14,5", @"iPhone 13",          @"17.7.2",  @390, @844, @3, @6, @4],
-            @[@"iPhone14,2", @"iPhone 13 Pro",      @"17.7.2",  @390, @844, @3, @6, @6],
-            @[@"iPhone14,3", @"iPhone 13 Pro Max",  @"18.3.2",  @428, @926, @3, @6, @6],
-            @[@"iPhone14,7", @"iPhone 14",          @"18.5",    @390, @844, @3, @6, @6],
-            @[@"iPhone14,8", @"iPhone 14 Plus",     @"18.5",    @428, @926, @3, @6, @6],
-            @[@"iPhone15,2", @"iPhone 14 Pro",      @"18.5",    @393, @852, @3, @6, @6],
-            @[@"iPhone15,3", @"iPhone 14 Pro Max",  @"18.6",    @430, @932, @3, @6, @6],
-            @[@"iPhone15,4", @"iPhone 15",          @"18.6",    @393, @852, @3, @6, @6],
-            @[@"iPhone15,5", @"iPhone 15 Plus",     @"18.6",    @430, @932, @3, @6, @6],
-            @[@"iPhone16,1", @"iPhone 15 Pro",      @"18.6.1",  @393, @852, @3, @6, @8],
-            @[@"iPhone16,2", @"iPhone 15 Pro Max",  @"18.6.1",  @430, @932, @3, @6, @8],
-            @[@"iPhone17,3", @"iPhone 16",          @"18.6.1",  @393, @852, @3, @6, @8],
-            @[@"iPhone17,4", @"iPhone 16 Plus",     @"18.6.1",  @430, @932, @3, @6, @8],
-            @[@"iPhone17,1", @"iPhone 16 Pro",      @"18.6.1",  @402, @874, @3, @6, @8],
-            @[@"iPhone17,2", @"iPhone 16 Pro Max",  @"18.6.1",  @440, @956, @3, @6, @8],
-        ];
-        NSMutableArray *out = [NSMutableArray array];
-        for (NSArray *r in rows) {
-            [out addObject:@{ @"model": r[0], @"name": r[1], @"ios": r[2],
-                              @"w": r[3], @"h": r[4], @"scale": r[5], @"cores": r[6], @"mem": r[7] }];
-        }
-        pool = [out copy];
-    });
-    return pool;
-}
-
-// Region rows keep carrier + timezone + ISO coherent. US-only so app language never flips.
-static NSArray<NSArray<NSString *> *> *HZRegionPool(void) {
-    static NSArray *pool; static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        pool = @[
-            //  IANA tz            carrier      MCC    MNC    ISO   locale
-            @[@"America/New_York",    @"AT&T",     @"310", @"410", @"us", @"en_US"],
-            @[@"America/Chicago",     @"T-Mobile", @"310", @"260", @"us", @"en_US"],
-            @[@"America/Los_Angeles", @"Verizon",  @"311", @"480", @"us", @"en_US"],
-            @[@"America/Denver",      @"AT&T",     @"310", @"410", @"us", @"en_US"],
-            @[@"America/Phoenix",     @"T-Mobile", @"310", @"260", @"us", @"en_US"],
-        ];
-    });
+    dispatch_once(&once, ^{ pool = @[]; });
     return pool;
 }
 
@@ -72,29 +25,52 @@ static NSString *HZAlnum(NSUInteger n) {
     return s;
 }
 
-NSDictionary *HZGenerateIdentity(void) {
-    NSArray<NSDictionary *> *pool = HZDevicePool();
-    NSDictionary *dev = pool[arc4random_uniform((uint32_t)pool.count)];
-    NSArray<NSString *> *region = HZRegionPool()[arc4random_uniform((uint32_t)HZRegionPool().count)];
+// A believable Wi-Fi/Bluetooth MAC: a real Apple OUI prefix + three random bytes, lowercase, colon-
+// separated (the form apps read back from MGCopyAnswer("WifiAddress")/"BluetoothAddress").
+static NSString *HZRandomMAC(void) {
+    static const char *ouis[] = { "f0:18:98", "a4:83:e7", "dc:2b:2a", "3c:15:c2", "b8:e8:56", "ac:bc:32" };
+    const char *oui = ouis[arc4random_uniform(sizeof(ouis)/sizeof(ouis[0]))];
+    return [NSString stringWithFormat:@"%s:%02x:%02x:%02x",
+            oui, arc4random_uniform(256), arc4random_uniform(256), arc4random_uniform(256)];
+}
 
-    NSMutableDictionary *d = [NSMutableDictionary dictionary];
-    d[@"model"] = dev[@"model"]; d[@"name"] = dev[@"name"]; d[@"ios"] = dev[@"ios"];
-    d[@"w"] = dev[@"w"]; d[@"h"] = dev[@"h"]; d[@"scale"] = dev[@"scale"];
-    d[@"cores"] = dev[@"cores"]; d[@"mem"] = dev[@"mem"];
-    d[@"idfv"] = HZUUIDUpper();
-    d[@"idfa"] = HZUUIDUpper();
-    d[@"udid"] = [NSString stringWithFormat:@"%@-%@", HZHex(8), HZHex(16)]; // modern A12+ UDID form
-    d[@"serial"] = HZAlnum(12);
-    d[@"batteryLevel"] = @((double)(arc4random_uniform(69) + 28) / 100.0); // 0.28–0.96
-    d[@"batteryCharging"] = @(arc4random_uniform(4) == 0);                 // ~25% charging
-    d[@"timeZone"]   = region[0];
-    d[@"carrierName"] = region[1];
-    d[@"mcc"] = region[2]; d[@"mnc"] = region[3]; d[@"iso"] = region[4];
-    d[@"localeId"] = region[5];
-    return [d copy];
+// A 15-digit IMEI with a valid Luhn check digit (so validators accept it).
+static NSString *HZRandomIMEI(void) {
+    int digits[14];
+    digits[0] = 1 + (int)arc4random_uniform(9);                 // no leading zero
+    for (int i = 1; i < 14; i++) digits[i] = (int)arc4random_uniform(10);
+
+    int sum = 0;
+    for (int i = 0; i < 14; i++) {
+        int d = digits[i];
+        int overallPosFromRight = (13 - i) + 1;                 // account for appended check digit
+        if (overallPosFromRight % 2 == 1) { d *= 2; if (d > 9) d -= 9; }
+        sum += d;
+    }
+    int check = (10 - (sum % 10)) % 10;
+
+    NSMutableString *s = [NSMutableString stringWithCapacity:15];
+    for (int i = 0; i < 14; i++) [s appendFormat:@"%d", digits[i]];
+    [s appendFormat:@"%d", check];
+    return s;
+}
+
+// Blaze-style: same phone, brand-new identity. Only the per-device identifiers change — nothing that
+// would contradict the real model (screen, CPU, RAM, iOS, carrier, time zone all stay real).
+NSDictionary *HZGenerateIdentity(void) {
+    return @{
+        @"idfv":      HZUUIDUpper(),   // identifierForVendor
+        @"idfa":      HZUUIDUpper(),   // advertisingIdentifier
+        @"udid":      [NSString stringWithFormat:@"%@-%@", HZHex(8), HZHex(16)], // MG UniqueDeviceID (A12+ form)
+        @"serial":    HZAlnum(12),     // MG SerialNumber
+        @"wifi":      HZRandomMAC(),   // MG WifiAddress
+        @"bluetooth": HZRandomMAC(),   // MG BluetoothAddress
+        @"imei":      HZRandomIMEI(),  // MG InternationalMobileEquipmentIdentity
+    };
 }
 
 NSString *HZIdentitySummary(NSDictionary *i) {
-    if (![i isKindOfClass:NSDictionary.class] || !i[@"name"]) return @"Not spoofed yet";
-    return [NSString stringWithFormat:@"%@ · iOS %@", i[@"name"], i[@"ios"] ?: @"?"];
+    if (![i isKindOfClass:NSDictionary.class] || (!i[@"serial"] && !i[@"udid"])) return @"No new identity yet";
+    NSString *serial = i[@"serial"] ?: @"?";
+    return [NSString stringWithFormat:@"New identity · SN %@", serial];
 }

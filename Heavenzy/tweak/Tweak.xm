@@ -12,70 +12,24 @@
 #import "GBFloatingButton.h"
 #import "HZConfig.h"
 
-// Plain-C mirror of the state, read by the ultra-early sysctl/uname/MGCopyAnswer hooks. These run
-// before/around libSystem init and MUST NOT touch Objective-C (a dispatch_once re-entry there
-// deadlocks), so the spoofed values are copied into C buffers once in the constructor.
+// Plain-C mirror of the identity, read by the ultra-early MGCopyAnswer hook. It runs before/around
+// libSystem init and MUST NOT touch Objective-C (a dispatch_once re-entry there deadlocks), so the
+// values are copied into C buffers once in the constructor.
+//
+// Heavenzy keeps the REAL iPhone (model, screen, CPU, RAM, iOS, carrier, time zone are all left
+// alone) and only resets the per-device identity below, so an app sees a brand-new phone.
 static int                gEnabled = 0;
-static char               gModel[64] = {0};
 static char               gUDID[64] = {0};
 static char               gSerial[32] = {0};
-static int32_t            gCores = 0;     // hw.ncpu / processorCount
-static int64_t            gMem   = 0;     // hw.memsize (bytes)
+static char               gWifi[24] = {0};
+static char               gBluetooth[24] = {0};
+static char               gIMEI[20] = {0};
 
-#pragma mark - C-level hardware (hw.machine / hw.model / hw.ncpu / hw.memsize)
+#pragma mark - MobileGestalt (the cross-install hardware identifiers)
 
-// Copies a fixed-width integer sysctl value out (matching sysctlbyname's contract for size queries
-// and short buffers). Returns 1 if it handled the call.
-static int GBCopyInt(void *oldp, size_t *oldlenp, const void *val, size_t vlen) {
-    if (oldlenp && !oldp) { *oldlenp = vlen; return 1; }             // size query
-    if (oldp && oldlenp) {
-        if (*oldlenp < vlen) { errno = ENOMEM; return 1; }
-        memcpy(oldp, val, vlen);
-        *oldlenp = vlen;
-        return 1;
-    }
-    return 0;
-}
-
-%hookf(int, sysctlbyname, const char *name, void *oldp, size_t *oldlenp, void *newp, size_t newlen) {
-    if (gEnabled && name && !newp) {
-        if (gModel[0] && (strcmp(name, "hw.machine") == 0 || strcmp(name, "hw.model") == 0)) {
-            size_t len = strlen(gModel) + 1;
-            if (oldlenp && !oldp) { *oldlenp = len; return 0; }      // size query
-            if (oldp && oldlenp) {
-                if (*oldlenp < len) { errno = ENOMEM; return -1; }
-                memcpy(oldp, gModel, len);
-                *oldlenp = len;
-                return 0;
-            }
-        }
-        // CPU counts (all report the spoofed core count so nothing contradicts the model).
-        if (gCores > 0 && (strcmp(name, "hw.ncpu") == 0 || strcmp(name, "hw.activecpu") == 0 ||
-                           strcmp(name, "hw.physicalcpu") == 0 || strcmp(name, "hw.physicalcpu_max") == 0 ||
-                           strcmp(name, "hw.logicalcpu") == 0 || strcmp(name, "hw.logicalcpu_max") == 0)) {
-            if (GBCopyInt(oldp, oldlenp, &gCores, sizeof(gCores))) return 0;
-        }
-        // Physical memory.
-        if (gMem > 0 && strcmp(name, "hw.memsize") == 0) {
-            if (GBCopyInt(oldp, oldlenp, &gMem, sizeof(gMem))) return 0;
-        }
-    }
-    return %orig;
-}
-
-%hookf(int, uname, struct utsname *buf) {
-    int r = %orig;
-    if (r == 0 && buf && gEnabled && gModel[0]) {
-        strlcpy(buf->machine, gModel, sizeof(buf->machine));
-    }
-    return r;
-}
-
-#pragma mark - MobileGestalt (UDID + serial — the cross-install hardware identifiers)
-
-// libMobileGestalt is where UniqueDeviceID (UDID) and SerialNumber really come from; they persist
-// across app deletes and iCloud restores, so spoofing them here is what breaks a "we've seen this
-// hardware before" match. Hooked with MSHookFunction because MGCopyAnswer is a private symbol.
+// libMobileGestalt is where UniqueDeviceID (UDID), SerialNumber, WifiAddress, BluetoothAddress and
+// the IMEI really come from; they persist across app deletes and iCloud restores, so resetting them
+// here is what makes the phone look brand new. Hooked with MSHookFunction (MGCopyAnswer is private).
 static CFTypeRef (*orig_MGCopyAnswer)(CFStringRef key);
 static CFTypeRef gb_MGCopyAnswer(CFStringRef key) {
     if (gEnabled && key) {
@@ -83,6 +37,12 @@ static CFTypeRef gb_MGCopyAnswer(CFStringRef key) {
             return CFStringCreateWithCString(NULL, gUDID, kCFStringEncodingUTF8);   // +1, caller releases
         if (gSerial[0] && CFStringCompare(key, CFSTR("SerialNumber"), 0) == kCFCompareEqualTo)
             return CFStringCreateWithCString(NULL, gSerial, kCFStringEncodingUTF8);
+        if (gWifi[0] && CFStringCompare(key, CFSTR("WifiAddress"), 0) == kCFCompareEqualTo)
+            return CFStringCreateWithCString(NULL, gWifi, kCFStringEncodingUTF8);
+        if (gBluetooth[0] && CFStringCompare(key, CFSTR("BluetoothAddress"), 0) == kCFCompareEqualTo)
+            return CFStringCreateWithCString(NULL, gBluetooth, kCFStringEncodingUTF8);
+        if (gIMEI[0] && CFStringCompare(key, CFSTR("InternationalMobileEquipmentIdentity"), 0) == kCFCompareEqualTo)
+            return CFStringCreateWithCString(NULL, gIMEI, kCFStringEncodingUTF8);
     }
     return orig_MGCopyAnswer ? orig_MGCopyAnswer(key) : NULL;
 }
@@ -153,17 +113,12 @@ static CFTypeRef gb_MGCopyAnswer(CFStringRef key) {
 }
 %end
 
-#pragma mark - UIDevice
+#pragma mark - UIDevice (identity only — real hardware is left alone)
 
 %hook UIDevice
 
-- (NSString *)systemVersion {
-    if (!gEnabled) return %orig;
-    NSString *v = [GBStore shared].systemVersion;
-    return v.length ? v : %orig;
-}
-
 - (NSString *)name {
+    // A brand-new phone is just "iPhone" (drops an identifying "<user>'s iPhone").
     if (!gEnabled) return %orig;
     NSString *v = [GBStore shared].deviceName;
     return v.length ? v : %orig;
@@ -174,16 +129,6 @@ static CFTypeRef gb_MGCopyAnswer(CFStringRef key) {
     NSString *s = [GBStore shared].idfv;
     NSUUID *u = s.length ? [[NSUUID alloc] initWithUUIDString:s] : nil;
     return u ?: %orig;
-}
-
-- (float)batteryLevel {
-    if (gEnabled) return (float)[GBStore shared].batteryLevel;
-    return %orig;
-}
-- (long long)batteryState {
-    // UIDeviceBatteryState: 1 = unplugged, 2 = charging.
-    if (gEnabled) return [GBStore shared].batteryCharging ? 2 : 1;
-    return %orig;
 }
 
 %end
@@ -197,117 +142,6 @@ static CFTypeRef gb_MGCopyAnswer(CFStringRef key) {
     NSString *s = [GBStore shared].idfa;
     NSUUID *u = s.length ? [[NSUUID alloc] initWithUUIDString:s] : nil;
     return u ?: %orig;
-}
-
-%end
-
-#pragma mark - CPU / memory (NSProcessInfo, bound to the spoofed device)
-
-%hook NSProcessInfo
-
-- (NSUInteger)processorCount {
-    if (gEnabled && gCores > 0) return (NSUInteger)gCores;
-    return %orig;
-}
-- (NSUInteger)activeProcessorCount {
-    if (gEnabled && gCores > 0) return (NSUInteger)gCores;
-    return %orig;
-}
-- (unsigned long long)physicalMemory {
-    if (gEnabled && gMem > 0) return (unsigned long long)gMem;
-    return %orig;
-}
-
-// operatingSystemVersion / …String leak the real iOS otherwise. Keep them aligned with UIDevice.
-- (NSOperatingSystemVersion)operatingSystemVersion {
-    if (gEnabled) {
-        NSString *v = [GBStore shared].systemVersion;
-        NSArray<NSString *> *parts = [v componentsSeparatedByString:@"."];
-        if (parts.count >= 1) {
-            NSOperatingSystemVersion o;
-            o.majorVersion = parts.count > 0 ? parts[0].integerValue : 0;
-            o.minorVersion = parts.count > 1 ? parts[1].integerValue : 0;
-            o.patchVersion = parts.count > 2 ? parts[2].integerValue : 0;
-            return o;
-        }
-    }
-    return %orig;
-}
-
-%end
-
-#pragma mark - Carrier (CoreTelephony, weak-linked)
-
-%hook CTCarrier
-- (NSString *)carrierName {
-    if (gEnabled) { NSString *v = [GBStore shared].carrierName; if (v.length) return v; }
-    return %orig;
-}
-- (NSString *)mobileCountryCode {
-    if (gEnabled) { NSString *v = [GBStore shared].mcc; if (v.length) return v; }
-    return %orig;
-}
-- (NSString *)mobileNetworkCode {
-    if (gEnabled) { NSString *v = [GBStore shared].mnc; if (v.length) return v; }
-    return %orig;
-}
-- (NSString *)isoCountryCode {
-    if (gEnabled) { NSString *v = [GBStore shared].isoCountryCode; if (v.length) return v; }
-    return %orig;
-}
-%end
-
-#pragma mark - Time zone (kept region-coherent with the carrier; never changes app language)
-
-%hook NSTimeZone
-+ (NSTimeZone *)systemTimeZone {
-    if (gEnabled) { NSString *n = [GBStore shared].timeZoneName; NSTimeZone *z = n.length ? [NSTimeZone timeZoneWithName:n] : nil; if (z) return z; }
-    return %orig;
-}
-+ (NSTimeZone *)localTimeZone {
-    if (gEnabled) { NSString *n = [GBStore shared].timeZoneName; NSTimeZone *z = n.length ? [NSTimeZone timeZoneWithName:n] : nil; if (z) return z; }
-    return %orig;
-}
-+ (NSTimeZone *)defaultTimeZone {
-    if (gEnabled) { NSString *n = [GBStore shared].timeZoneName; NSTimeZone *z = n.length ? [NSTimeZone timeZoneWithName:n] : nil; if (z) return z; }
-    return %orig;
-}
-%end
-
-#pragma mark - Locale (region-coherent; pool is en_* so app language is unchanged)
-
-%hook NSLocale
-+ (NSLocale *)currentLocale {
-    if (gEnabled) { NSString *l = [GBStore shared].localeId; if (l.length) return [NSLocale localeWithLocaleIdentifier:l]; }
-    return %orig;
-}
-+ (NSLocale *)autoupdatingCurrentLocale {
-    if (gEnabled) { NSString *l = [GBStore shared].localeId; if (l.length) return [NSLocale localeWithLocaleIdentifier:l]; }
-    return %orig;
-}
-%end
-
-#pragma mark - Screen (native pixel size + scale, so it matches the spoofed model)
-
-// Only the *pixel-space* getters are spoofed (nativeBounds/nativeScale). The point-space bounds and
-// scale that UIKit lays the app out with are left untouched, so nothing misrenders — but the values
-// apps read to build "1179x2556 scale=3.00" style device strings now agree with the model.
-%hook UIScreen
-
-- (CGRect)nativeBounds {
-    if (gEnabled) {
-        GBStore *s = [GBStore shared];
-        if (s.nativePixelsW > 0 && s.nativePixelsH > 0)
-            return CGRectMake(0, 0, s.nativePixelsW, s.nativePixelsH);
-    }
-    return %orig;
-}
-- (CGFloat)nativeScale {
-    if (gEnabled) {
-        NSInteger sc = [GBStore shared].scaleFactor;
-        if (sc > 0) return (CGFloat)sc;
-    }
-    return %orig;
 }
 
 %end
@@ -415,21 +249,18 @@ static void GBInstallGesture(void) {
         gEnabled = store.enabled ? 1 : 0;
         if (gEnabled) {
             if (!store.hasIdentity) [store regenerateIdentity];
-            const char *m = store.deviceModel.UTF8String;
-            if (m) strlcpy(gModel, m, sizeof(gModel));
-            const char *u = store.udid.UTF8String;
-            if (u) strlcpy(gUDID, u, sizeof(gUDID));
-            const char *s = store.serialNumber.UTF8String;
-            if (s) strlcpy(gSerial, s, sizeof(gSerial));
-            gCores = (int32_t)store.cpuCores;
-            gMem   = (int64_t)store.memoryBytes;
+            const char *u = store.udid.UTF8String;         if (u) strlcpy(gUDID, u, sizeof(gUDID));
+            const char *s = store.serialNumber.UTF8String; if (s) strlcpy(gSerial, s, sizeof(gSerial));
+            const char *w = store.wifiAddress.UTF8String;  if (w) strlcpy(gWifi, w, sizeof(gWifi));
+            const char *b = store.bluetoothAddress.UTF8String; if (b) strlcpy(gBluetooth, b, sizeof(gBluetooth));
+            const char *im = store.imei.UTF8String;        if (im) strlcpy(gIMEI, im, sizeof(gIMEI));
             NSLog(@"[Heavenzy] Active in %@ → %@", bundleID, store.summary);
         }
 
         %init;
 
-        // MobileGestalt is only worth hooking when we actually have spoofed values to serve.
-        if (gEnabled && (gUDID[0] || gSerial[0])) {
+        // MobileGestalt is only worth hooking when we actually have identifiers to serve.
+        if (gEnabled && (gUDID[0] || gSerial[0] || gWifi[0] || gBluetooth[0] || gIMEI[0])) {
             void *mg = dlsym(RTLD_DEFAULT, "MGCopyAnswer");
             if (mg) MSHookFunction(mg, (void *)gb_MGCopyAnswer, (void **)&orig_MGCopyAnswer);
         }

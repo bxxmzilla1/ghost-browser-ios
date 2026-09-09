@@ -47,26 +47,15 @@ enum { SEC_ENABLE, SEC_DEVICE, SEC_DETAILS, SEC_ERASE, SEC_COUNT };
 
 - (void)rebuildDetails {
     NSDictionary *i = self.identity ?: @{};
-    NSString *screen = [NSString stringWithFormat:@"%@×%@ @%@x",
-                        @([i[@"w"] integerValue] * [i[@"scale"] integerValue]),
-                        @([i[@"h"] integerValue] * [i[@"scale"] integerValue]), i[@"scale"] ?: @"?"];
-    NSString *carrier = [NSString stringWithFormat:@"%@ (%@/%@)", i[@"carrierName"] ?: @"—", i[@"mcc"] ?: @"?", i[@"mnc"] ?: @"?"];
-    NSString *battery = [NSString stringWithFormat:@"%d%%%@", (int)([i[@"batteryLevel"] doubleValue] * 100),
-                         [i[@"batteryCharging"] boolValue] ? @" ⚡︎ charging" : @""];
+    // Only the reset identifiers — the real iPhone (model, screen, CPU, RAM, iOS, carrier) is kept.
     self.details = @[
-        @[@"Model",      i[@"model"] ?: @"—"],
-        @[@"iOS",        i[@"ios"] ?: @"—"],
-        @[@"Screen",     screen],
-        @[@"CPU cores",  [NSString stringWithFormat:@"%@", i[@"cores"] ?: @"—"]],
-        @[@"Memory",     [NSString stringWithFormat:@"%@ GB", i[@"mem"] ?: @"—"]],
-        @[@"IDFV",       i[@"idfv"] ?: @"—"],
-        @[@"IDFA",       i[@"idfa"] ?: @"—"],
-        @[@"UDID",       i[@"udid"] ?: @"—"],
-        @[@"Serial",     i[@"serial"] ?: @"—"],
-        @[@"Carrier",    carrier],
-        @[@"Time zone",  i[@"timeZone"] ?: @"—"],
-        @[@"Locale",     i[@"localeId"] ?: @"—"],
-        @[@"Battery",    battery],
+        @[@"Serial",       i[@"serial"] ?: @"—"],
+        @[@"UDID",         i[@"udid"] ?: @"—"],
+        @[@"IDFV",         i[@"idfv"] ?: @"—"],
+        @[@"IDFA",         i[@"idfa"] ?: @"—"],
+        @[@"Wi-Fi MAC",    i[@"wifi"] ?: @"—"],
+        @[@"Bluetooth MAC",i[@"bluetooth"] ?: @"—"],
+        @[@"IMEI",         i[@"imei"] ?: @"—"],
     ];
 }
 
@@ -86,19 +75,20 @@ enum { SEC_ENABLE, SEC_DEVICE, SEC_DETAILS, SEC_ERASE, SEC_COUNT };
 
 - (NSString *)tableView:(UITableView *)tv titleForHeaderInSection:(NSInteger)s {
     switch (s) {
-        case SEC_DEVICE:  return @"SPOOFED DEVICE";
-        case SEC_DETAILS: return @"DETAILS";
+        case SEC_DEVICE:  return @"DEVICE IDENTITY";
+        case SEC_DETAILS: return @"RESET IDENTIFIERS";
         default:          return nil;
     }
 }
 
 - (NSString *)tableView:(UITableView *)tv titleForFooterInSection:(NSInteger)s {
     if (s == SEC_ENABLE)
-        return @"When on, this app sees the device below instead of your real iPhone (model, screen, "
-               @"identifiers, carrier, time zone and locale).";
+        return @"When on, this app keeps your real iPhone model but sees a brand-new identity "
+               @"(serial, UDID, IDFV, IDFA, Wi-Fi/Bluetooth MAC, IMEI), so it looks like a fresh phone "
+               @"with a first-time install.";
     if (s == SEC_ERASE)
         return @"Wipes this app's data, cookies, web data and keychain (incl. iCloud items) the next time "
-               @"you open it — a fresh install with the device above. A respring is not required.";
+               @"you open it — a fresh install with the identity above. A respring is not required.";
     return nil;
 }
 

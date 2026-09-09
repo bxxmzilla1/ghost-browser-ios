@@ -1,18 +1,18 @@
 #import <Foundation/Foundation.h>
 
-/// Shared device-fingerprint model used by BOTH the Heavenzy control app and the tweak, so the two
-/// never disagree on what a "device" looks like. Mirrors Ghost's module set (iPhone, Identifiers,
-/// Battery, Carrier, Locale/TimeZone) with every attribute bound to the chosen model / region.
+/// Shared identity model used by BOTH the Heavenzy control app and the tweak. Blaze-style: the real
+/// iPhone is kept (model, screen, CPU, RAM, iOS, carrier, time zone all stay real) and only the
+/// per-device *identity* is reset, so an app sees a brand-new phone with a first-time install.
 ///
 /// The identity dictionary keys (stable, used on disk):
-///   model,name,ios (strings) · w,h,scale,cores,mem (numbers)
-///   idfv,idfa,udid,serial (strings)
-///   batteryLevel (number 0..1) · batteryCharging (bool)
-///   carrierName,mcc,mnc,iso,timeZone,localeId (strings)
+///   idfv,idfa   — identifierForVendor / advertisingIdentifier (UPPERCASE UUIDs)
+///   udid,serial — MobileGestalt UniqueDeviceID / SerialNumber
+///   wifi,bluetooth — MobileGestalt WifiAddress / BluetoothAddress (lowercase MACs)
+///   imei        — MobileGestalt InternationalMobileEquipmentIdentity (15-digit, valid Luhn)
 FOUNDATION_EXPORT NSDictionary *HZGenerateIdentity(void);
 
-/// Human summary "iPhone 15 Pro · iOS 18.6.1".
+/// Human summary, e.g. "New identity · SN F2LX…".
 FOUNDATION_EXPORT NSString *HZIdentitySummary(NSDictionary *identity);
 
-/// The device pool (array of dicts, same keys as above minus identifiers/battery/region).
+/// Legacy device pool (now empty; kept for source compatibility).
 FOUNDATION_EXPORT NSArray<NSDictionary *> *HZDevicePool(void);

@@ -7,6 +7,7 @@
 #import <sys/utsname.h>
 #import "GBStore.h"
 #import "GBMenu.h"
+#import "GBFloatingButton.h"
 
 // Plain-C mirror of the state, read by the ultra-early sysctl/uname hooks. These run before/around
 // libSystem init and MUST NOT touch Objective-C (a dispatch_once re-entry there deadlocks), so the
@@ -174,6 +175,8 @@ static void GBInstallGesture(void) {
     }
     if (!key) key = anyWindow;
     if (!key) return;
+    // Always-on-top draggable bubble that opens the panel with one tap.
+    [GBFloatingButton installInScene:key.windowScene];
     // Avoid stacking recognizers if the window becomes active repeatedly.
     for (UIGestureRecognizer *r in key.gestureRecognizers) {
         if ([r.name isEqualToString:@"HeavenzyMenu"]) return;

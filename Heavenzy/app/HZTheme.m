@@ -151,6 +151,42 @@ UIView *HZHeroHeader(CGFloat width, UIImage *image, BOOL ring, NSString *title, 
     return v;
 }
 
+UIView *HZCompactHeader(CGFloat width, UIImage *image, NSString *title, UIView *pill) {
+    UIView *v = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, 66)];
+
+    UIImageView *iv = [[UIImageView alloc] initWithImage:image];
+    iv.contentMode = UIViewContentModeScaleAspectFill;
+    iv.backgroundColor = HZCard();
+    iv.layer.cornerRadius = 11; iv.clipsToBounds = YES;
+    iv.layer.borderWidth = 1; iv.layer.borderColor = HZHairline().CGColor;
+    iv.translatesAutoresizingMaskIntoConstraints = NO;
+
+    UILabel *t = [UILabel new];
+    t.text = title; t.textColor = UIColor.whiteColor;
+    t.font = [UIFont systemFontOfSize:22 weight:UIFontWeightBold];
+    t.translatesAutoresizingMaskIntoConstraints = NO;
+
+    [v addSubview:iv]; [v addSubview:t];
+    [NSLayoutConstraint activateConstraints:@[
+        [iv.leadingAnchor constraintEqualToAnchor:v.leadingAnchor constant:20],
+        [iv.centerYAnchor constraintEqualToAnchor:v.centerYAnchor],
+        [iv.widthAnchor constraintEqualToConstant:42], [iv.heightAnchor constraintEqualToConstant:42],
+        [t.leadingAnchor constraintEqualToAnchor:iv.trailingAnchor constant:12],
+        [t.centerYAnchor constraintEqualToAnchor:v.centerYAnchor],
+    ]];
+    if (pill) {
+        [v addSubview:pill];
+        [NSLayoutConstraint activateConstraints:@[
+            [pill.trailingAnchor constraintEqualToAnchor:v.trailingAnchor constant:-20],
+            [pill.centerYAnchor constraintEqualToAnchor:v.centerYAnchor],
+            [pill.leadingAnchor constraintGreaterThanOrEqualToAnchor:t.trailingAnchor constant:12],
+        ]];
+    } else {
+        [t.trailingAnchor constraintLessThanOrEqualToAnchor:v.trailingAnchor constant:-20].active = YES;
+    }
+    return v;
+}
+
 #pragma mark - Buttons
 
 @interface HZGradientButton () { CAGradientLayer *_grad; }

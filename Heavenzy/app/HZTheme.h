@@ -26,6 +26,8 @@ UIView *HZPill(NSString *text, UIColor *color);
 /// Hero header for a table: big image (circular ring if `ring`), bold title, dim subtitle and an
 /// optional trailing pill. Sized for `width`, ready for `tableHeaderView`.
 UIView *HZHeroHeader(CGFloat width, UIImage *image, BOOL ring, NSString *title, NSString *subtitle, UIView *pill);
+/// Compact one-line header: small rounded image on the left, title next to it, optional pill on the right.
+UIView *HZCompactHeader(CGFloat width, UIImage *image, NSString *title, UIView *pill);
 
 /// Full-width violet gradient call-to-action.
 @interface HZGradientButton : UIButton

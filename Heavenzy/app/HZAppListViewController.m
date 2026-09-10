@@ -68,7 +68,10 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.title = @"Heavenzy";
+    // The title lives in the compact header (logo + "Heavenzy"), not in the navigation bar.
+    self.navigationItem.title = @"";
+    self.navigationItem.backButtonTitle = @"Heavenzy";
+    self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
     self.view.backgroundColor = HZBG();
     HZStyleTable(self.tableView);
     [self.tableView registerClass:HZAppCell.class forCellReuseIdentifier:@"app"];
@@ -106,9 +109,7 @@
     for (NSDictionary *a in self.apps) if ([HZConfig isEnabledForApp:a[@"id"]]) on++;
     UIView *pill = HZPill(on ? [NSString stringWithFormat:@"%lu spoofed", (unsigned long)on] : @"nothing spoofed yet",
                           on ? HZSuccess() : HZTextMuted());
-    self.tableView.tableHeaderView = HZHeroHeader(self.tableView.bounds.size.width, HZLogo(), YES, @"Device Identity",
-        @"Every app you switch on sees a brand-new iPhone — same model, fresh serial, UDID, IDFV, IDFA, MACs and IMEI.",
-        pill);
+    self.tableView.tableHeaderView = HZCompactHeader(self.tableView.bounds.size.width, HZLogo(), @"Heavenzy", pill);
 }
 
 - (void)showSettings {

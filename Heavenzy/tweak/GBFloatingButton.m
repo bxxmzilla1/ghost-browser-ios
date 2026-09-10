@@ -8,6 +8,7 @@ static const CGFloat GBBubbleSize = 44;
 @property (nonatomic, strong) UIView *bubble;
 @property (nonatomic, assign) CGPoint dragStart;
 @property (nonatomic, assign) BOOL dragging;
+- (void)show;
 @end
 
 @implementation GBFloatingButton
@@ -16,13 +17,44 @@ static NSMapTable<UIWindowScene *, GBFloatingButton *> *gBubbles;
 
 + (void)installInScene:(UIWindowScene *)scene {
     if (!scene) return;
+    // Only worth showing in a scene that's actually on screen.
+    if (scene.activationState != UISceneActivationStateForegroundActive &&
+        scene.activationState != UISceneActivationStateForegroundInactive) return;
     if (!gBubbles) gBubbles = [NSMapTable weakToStrongObjectsMapTable];
-    GBFloatingButton *existing = [gBubbles objectForKey:scene];
-    if (existing) { existing.hidden = NO; return; }
 
-    GBFloatingButton *w = [[GBFloatingButton alloc] initWithWindowScene:scene];
-    [gBubbles setObject:w forKey:scene];
-    w.hidden = NO;
+    GBFloatingButton *existing = [gBubbles objectForKey:scene];
+    if (existing) { [existing show]; }
+    else {
+        GBFloatingButton *w = [[GBFloatingButton alloc] initWithWindowScene:scene];
+        [gBubbles setObject:w forKey:scene];
+        [w show];
+        NSLog(@"[Heavenzy] Floating button installed in scene (state %ld)", (long)scene.activationState);
+    }
+
+    // Keep re-asserting visibility: some hosts (Instagram) briefly re-key / cover new windows, so a
+    // gentle repeating nudge makes sure the bubble stays on top for the whole session.
+    static dispatch_once_t once; dispatch_once(&once, ^{
+        [NSTimer scheduledTimerWithTimeInterval:2.5 repeats:YES block:^(NSTimer *t) {
+            for (UIWindowScene *s in [[gBubbles keyEnumerator] allObjects]) {
+                [[gBubbles objectForKey:s] show];
+            }
+        }];
+    });
+}
+
+// Force the window visible without permanently stealing key focus from the app. Setting hidden=NO
+// alone doesn't reliably render an overlay window inside some apps; makeKeyAndVisible does, so we do
+// that and then immediately hand the key window back so the app keeps its text input / responders.
+- (void)show {
+    if (self.windowScene == nil) return;
+    UIWindow *prevKey = nil;
+    for (UIWindow *win in self.windowScene.windows) {
+        if (win != self && win.isKeyWindow) { prevKey = win; break; }
+    }
+    self.hidden = NO;
+    self.windowLevel = UIWindowLevelAlert + 10;   // re-assert level → stays above app alerts
+    [self makeKeyAndVisible];
+    [prevKey makeKeyWindow];
 }
 
 - (instancetype)initWithWindowScene:(UIWindowScene *)scene {

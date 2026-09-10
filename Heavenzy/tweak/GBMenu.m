@@ -3,6 +3,7 @@
 #import "GBTokens.h"
 #import "GBBundleSocial.h"
 #import <WebKit/WebKit.h>
+#import <SafariServices/SafariServices.h>
 #import <Security/Security.h>
 
 #pragma mark - Data wipe helpers
@@ -295,9 +296,12 @@ static UIButton *GBWide(NSString *title, UIColor *bg, UIColor *fg) {
         self.connectButton.enabled = YES;
         [self.connectButton setTitle:@"Connect via Bundle.social" forState:UIControlStateNormal];
         if (url) {
-            [self dismissViewControllerAnimated:YES completion:^{
-                [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
-            }];
+            // Open inside the app (SFSafariViewController shares Safari's cookies/website data, so an
+            // existing instagram.com / bundle.social web session signs the OAuth in automatically).
+            SFSafariViewController *sf = [[SFSafariViewController alloc] initWithURL:url];
+            sf.modalPresentationStyle = UIModalPresentationFullScreen;
+            sf.preferredControlTintColor = GBAccent();
+            [self presentViewController:sf animated:YES completion:nil];
         } else {
             UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Couldn't connect"
                 message:error ?: @"Unknown error." preferredStyle:UIAlertControllerStyleAlert];

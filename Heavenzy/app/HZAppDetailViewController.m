@@ -47,8 +47,17 @@ enum { SEC_ENABLE, SEC_DETAILS, SEC_ACTIONS, SEC_COUNT };
     if (!self.tableView.tableHeaderView || self.tableView.tableHeaderView.frame.size.width != self.tableView.bounds.size.width) [self refreshHeader];
 }
 
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    // Returning here after relaunching the target app: the tweak may have performed the queued wipe
+    // and cleared the flag in the app's container, so re-read the real state and refresh the pill.
+    self.enabled = [HZConfig isEnabledForApp:self.bundleId];
+    [self refreshHeader];
+    [self.tableView reloadData];
+}
+
 - (void)refreshHeader {
-    BOOL wipe = [HZConfig wipePendingForApp:self.bundleId];
+    BOOL wipe = [HZContainerSync wipePendingForApp:self.bundleId];
     UIView *pill = wipe ? HZPill(@"erase queued", HZDanger())
                  : self.enabled ? HZPill(@"spoofing on", HZSuccess()) : HZPill(@"spoofing off", HZTextMuted());
     self.tableView.tableHeaderView = HZHeroHeader(self.tableView.bounds.size.width, HZAppIcon(self.bundleId), NO,
@@ -183,8 +192,10 @@ enum { SEC_ENABLE, SEC_DETAILS, SEC_ACTIONS, SEC_COUNT };
 
 // Mirror the current state into the target app's own container so the tweak reads it without libSandy.
 - (void)sync {
+    // Preserve the app's real queued-erase state (from its container) so toggling spoof or rolling a
+    // new identity never re-arms a wipe the tweak already performed.
     [HZContainerSync writeForApp:self.bundleId identity:self.identity
-                         enabled:self.enabled wipePending:[HZConfig wipePendingForApp:self.bundleId]];
+                         enabled:self.enabled wipePending:[HZContainerSync wipePendingForApp:self.bundleId]];
 }
 
 - (void)toggleEnable:(UISwitch *)sw {

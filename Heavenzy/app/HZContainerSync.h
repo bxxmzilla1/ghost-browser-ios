@@ -18,4 +18,9 @@
 /// in-app SMS panel can reach them even in apps that aren't spoofed. Returns how many were updated.
 + (NSInteger)writeSmsSettingsToAllApps;
 
+/// TRUE if an erase is still queued in the app's own container. The tweak clears this flag from the
+/// container the moment it performs the wipe, so this reflects the real, post-launch state (unlike
+/// the central HZConfig copy, which the sandboxed tweak can't reach without libSandy).
++ (BOOL)wipePendingForApp:(NSString *)bundleId;
+
 @end

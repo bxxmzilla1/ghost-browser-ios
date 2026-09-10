@@ -203,9 +203,10 @@
         [HZConfig setIdentity:HZGenerateIdentity() forApp:bid];   // roll one on first enable
     }
     [HZConfig setEnabled:sw.on forApp:bid];
-    // Push straight into the app's container so the tweak sees it without libSandy.
+    // Push straight into the app's container so the tweak sees it without libSandy. Preserve the real
+    // queued-erase state (container truth) so we don't re-arm a wipe the tweak already ran.
     [HZContainerSync writeForApp:bid identity:[HZConfig identityForApp:bid]
-                         enabled:sw.on wipePending:[HZConfig wipePendingForApp:bid]];
+                         enabled:sw.on wipePending:[HZContainerSync wipePendingForApp:bid]];
     [self refreshHeader];
     [self.tableView reloadRowsAtIndexPaths:@[ [NSIndexPath indexPathForRow:row inSection:0] ] withRowAnimation:UITableViewRowAnimationNone];
 }

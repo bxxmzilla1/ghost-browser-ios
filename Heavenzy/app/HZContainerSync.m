@@ -57,6 +57,14 @@
     return n;
 }
 
++ (BOOL)wipePendingForApp:(NSString *)bundleId {
+    NSURL *container = [self dataContainerForApp:bundleId];
+    if (!container) return [HZConfig wipePendingForApp:bundleId];   // never launched → central copy
+    NSString *path = [container.path stringByAppendingPathComponent:@"Library/Preferences/com.heavenzy.plist"];
+    NSDictionary *d = [NSDictionary dictionaryWithContentsOfFile:path];
+    return [d[@"wipePending"] boolValue];
+}
+
 + (BOOL)writeForApp:(NSString *)bundleId
            identity:(NSDictionary *)identity
             enabled:(BOOL)enabled

@@ -27,7 +27,7 @@ static UILabel *GBLabel(NSString *t, CGFloat size, UIFontWeight w, UIColor *c) {
 @property (nonatomic, strong) UILabel *phoneLabel;
 @property (nonatomic, strong) UILabel *statusLabel;
 @property (nonatomic, strong) UILabel *codeLabel;
-@property (nonatomic, strong) UIButton *newButton;
+@property (nonatomic, strong) UIButton *againButton;
 
 @property (nonatomic, copy)   NSString *orderId;
 @property (nonatomic, strong) NSTimer *pollTimer;
@@ -88,12 +88,12 @@ static UILabel *GBLabel(NSString *t, CGFloat size, UIFontWeight w, UIColor *c) {
     [self.codeLabel addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(copyCode)]];
     self.codeLabel.hidden = YES;
 
-    self.newButton = [self wideButton:@"New Number" bg:GBFieldBG() fg:GBAccent()];
-    [self.newButton addTarget:self action:@selector(newTapped) forControlEvents:UIControlEventTouchUpInside];
-    self.newButton.hidden = YES;
+    self.againButton = [self wideButton:@"New Number" bg:GBFieldBG() fg:GBAccent()];
+    [self.againButton addTarget:self action:@selector(newTapped) forControlEvents:UIControlEventTouchUpInside];
+    self.againButton.hidden = YES;
 
     UIStackView *body = [[UIStackView alloc] initWithArrangedSubviews:@[
-        header, self.serviceLabel, self.getButton, self.phoneLabel, self.codeLabel, self.statusLabel, self.newButton ]];
+        header, self.serviceLabel, self.getButton, self.phoneLabel, self.codeLabel, self.statusLabel, self.againButton ]];
     body.axis = UILayoutConstraintAxisVertical; body.spacing = 8;
     body.translatesAutoresizingMaskIntoConstraints = NO;
     [self.card addSubview:body];
@@ -182,7 +182,7 @@ static UILabel *GBLabel(NSString *t, CGFloat size, UIFontWeight w, UIColor *c) {
     [self.pollTimer invalidate]; self.pollTimer = nil;
     self.getButton.enabled = NO;
     [self.getButton setTitle:@"Requesting…" forState:UIControlStateNormal];
-    self.phoneLabel.hidden = YES; self.codeLabel.hidden = YES; self.newButton.hidden = YES;
+    self.phoneLabel.hidden = YES; self.codeLabel.hidden = YES; self.againButton.hidden = YES;
     self.statusLabel.hidden = NO; self.statusLabel.textColor = GBSubtle();
     self.statusLabel.text = @"Requesting a number…";
     __weak typeof(self) w = self;
@@ -194,7 +194,7 @@ static UILabel *GBLabel(NSString *t, CGFloat size, UIFontWeight w, UIColor *c) {
         s.orderId = orderId;
         s.getButton.hidden = YES;
         s.phoneLabel.hidden = NO; s.phoneLabel.text = [s prettyPhone:phone];
-        s.newButton.hidden = NO;
+        s.againButton.hidden = NO;
         s.statusLabel.textColor = GBSubtle();
         s.statusLabel.text = @"Waiting for the code… (tap the number to copy)";
         UIPasteboard.generalPasteboard.string = phone;
@@ -239,7 +239,7 @@ static UILabel *GBLabel(NSString *t, CGFloat size, UIFontWeight w, UIColor *c) {
     [self.pollTimer invalidate]; self.pollTimer = nil;
     if (self.orderId) [GBSMS cancelOrder:self.orderId];
     self.orderId = nil;
-    self.phoneLabel.hidden = YES; self.codeLabel.hidden = YES; self.newButton.hidden = YES;
+    self.phoneLabel.hidden = YES; self.codeLabel.hidden = YES; self.againButton.hidden = YES;
     self.statusLabel.hidden = YES;
     self.getButton.hidden = NO; self.getButton.enabled = YES;
     self.serviceLabel.text = [self serviceLine];

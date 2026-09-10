@@ -47,8 +47,10 @@ static NSString *GBPrefsPath(void) {
     _localeId      = [d[@"localeId"] copy];
     _floatingOrigin = CGPointMake(d[@"floatX"] ? [d[@"floatX"] doubleValue] : -1,
                                   d[@"floatY"] ? [d[@"floatY"] doubleValue] : -1);
-    _bundleKey     = [d[@"bundleKey"] copy];
-    _bundleTeam    = [d[@"bundleTeam"] copy];
+    _smsProvider     = [d[@"smsProvider"] copy] ?: @"diddy";
+    _diddyKey        = [d[@"diddyKey"] copy];
+    _grizzlyKey      = [d[@"grizzlyKey"] copy];
+    _grizzlyMaxPrice = [d[@"grizzlyMaxPrice"] copy];
 
     // If the in-app panel never configured this app, fall back to what the Heavenzy control app set
     // centrally for this bundle id (Ghost model). Adopted into the local container so it sticks even
@@ -66,12 +68,16 @@ static NSString *GBPrefsPath(void) {
         }
     }
 
-    // Bundle.social key normally arrives via the control app writing our container plist; if it's
-    // not there yet but the central store is reachable (libSandy), adopt it as a fallback.
-    if (_bundleKey.length == 0) {
+    // SMS settings normally arrive via the control app writing our container plist; if they're not
+    // there yet but the central store is reachable (libSandy), adopt them as a fallback.
+    if (_diddyKey.length == 0 && _grizzlyKey.length == 0) {
         [HZConfig grantSandboxAccess];
-        NSString *k = [HZConfig bundleKey];
-        if (k.length) { _bundleKey = [k copy]; _bundleTeam = [[HZConfig bundleTeam] copy]; }
+        NSString *dk = [HZConfig diddyKey], *gk = [HZConfig grizzlyKey];
+        if (dk.length || gk.length) {
+            _smsProvider = [[HZConfig smsProvider] copy] ?: @"diddy";
+            _diddyKey = [dk copy]; _grizzlyKey = [gk copy];
+            _grizzlyMaxPrice = [[HZConfig grizzlyMaxPrice] copy];
+        }
     }
 }
 
@@ -126,8 +132,10 @@ static NSString *GBPrefsPath(void) {
         d[@"floatX"] = @(_floatingOrigin.x);
         d[@"floatY"] = @(_floatingOrigin.y);
     }
-    if (_bundleKey)  d[@"bundleKey"]  = _bundleKey;    // preserve creds across in-app saves/wipes
-    if (_bundleTeam) d[@"bundleTeam"] = _bundleTeam;
+    if (_smsProvider)     d[@"smsProvider"]     = _smsProvider;   // preserve across in-app saves/wipes
+    if (_diddyKey)        d[@"diddyKey"]        = _diddyKey;
+    if (_grizzlyKey)      d[@"grizzlyKey"]      = _grizzlyKey;
+    if (_grizzlyMaxPrice) d[@"grizzlyMaxPrice"] = _grizzlyMaxPrice;
     NSString *path = GBPrefsPath();
     [[NSFileManager defaultManager] createDirectoryAtPath:[path stringByDeletingLastPathComponent]
                               withIntermediateDirectories:YES attributes:nil error:nil];

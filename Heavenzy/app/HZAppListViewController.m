@@ -1,5 +1,6 @@
 #import "HZAppListViewController.h"
 #import "HZAppDetailViewController.h"
+#import "HZSettingsViewController.h"
 #import "HZConfig.h"
 #import "HZDevice.h"
 #import "HZContainerSync.h"
@@ -38,44 +39,10 @@ static UIColor *HZAccent(void) { return [UIColor colorWithRed:0.55 green:0.45 bl
     [self loadApps];
 }
 
-#pragma mark - Settings (Bundle.social API key)
+#pragma mark - Settings (SMS providers)
 
 - (void)showSettings {
-    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Bundle.social"
-        message:@"Paste your organization API key (from the Bundle.social dashboard → API Keys). "
-                @"Team ID is optional — leave it blank to use your first team."
-        preferredStyle:UIAlertControllerStyleAlert];
-    [a addTextFieldWithConfigurationHandler:^(UITextField *tf) {
-        tf.placeholder = @"API key (pk_live_…)";
-        tf.text = [HZConfig bundleKey] ?: @"";
-        tf.autocapitalizationType = UITextAutocapitalizationTypeNone;
-        tf.autocorrectionType = UITextAutocorrectionTypeNo;
-        tf.clearButtonMode = UITextFieldViewModeWhileEditing;
-        tf.secureTextEntry = YES;
-    }];
-    [a addTextFieldWithConfigurationHandler:^(UITextField *tf) {
-        tf.placeholder = @"Team ID (optional)";
-        tf.text = [HZConfig bundleTeam] ?: @"";
-        tf.autocapitalizationType = UITextAutocapitalizationTypeNone;
-        tf.autocorrectionType = UITextAutocorrectionTypeNo;
-        tf.clearButtonMode = UITextFieldViewModeWhileEditing;
-    }];
-    [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-    [a addAction:[UIAlertAction actionWithTitle:@"Save" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *x) {
-        NSString *key  = [a.textFields[0].text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-        NSString *team = [a.textFields[1].text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-        [HZConfig setBundleKey:key];
-        [HZConfig setBundleTeam:team];
-        NSInteger n = [HZContainerSync writeBundleKey:key team:team];   // push to every app container
-        UIAlertController *ok = [UIAlertController alertControllerWithTitle:(key.length ? @"Saved" : @"Cleared")
-            message:key.length
-                ? [NSString stringWithFormat:@"Key stored and pushed to %ld app%@. Open Instagram → tap the floating H → Connect via Bundle.social.", (long)n, n == 1 ? @"" : @"s"]
-                : @"Bundle.social key removed."
-            preferredStyle:UIAlertControllerStyleAlert];
-        [ok addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-        [self presentViewController:ok animated:YES completion:nil];
-    }]];
-    [self presentViewController:a animated:YES completion:nil];
+    [self.navigationController pushViewController:[HZSettingsViewController new] animated:YES];
 }
 
 - (void)viewWillAppear:(BOOL)animated {

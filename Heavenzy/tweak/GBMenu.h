@@ -1,13 +1,10 @@
-#import <UIKit/UIKit.h>
+#import <Foundation/Foundation.h>
 
-/// The in-app control panel (Blaze-style). Presented by a two-finger long-press on the key window.
+/// App-data reset used by the wipe-on-next-launch flow (queued from the Heavenzy control app).
 @interface GBMenu : NSObject
 
-/// Present the panel from the given window's top-most view controller.
-+ (void)presentFromWindow:(UIWindow *)window;
-
 /// InstagramJailed-style reset: wipe this app's data, cookies, WebKit data and keychain (incl.
-/// iCloud-synced items). Used by the panel's wipe button and by a control-app "Erase" request.
+/// iCloud-synced items) so it comes up as a fresh install.
 + (void)clearAppData;
 
 @end

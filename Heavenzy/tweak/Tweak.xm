@@ -4,7 +4,7 @@
 #import <string.h>
 #import "GBStore.h"
 #import "GBMenu.h"
-#import "GBFloatingButton.h"
+#import "GBOverlay.h"
 #import "HZConfig.h"
 
 // Heavenzy keeps the REAL iPhone (model, screen, CPU, RAM, iOS, carrier, time zone are all left
@@ -148,7 +148,7 @@ static int gEnabled = 0;
 }
 %end
 
-#pragma mark - In-app menu gesture (two-finger long-press on the key window)
+#pragma mark - SMS panel + re-show gesture (two-finger long-press on the key window)
 
 @interface GBGestureTarget : NSObject
 + (instancetype)shared;
@@ -161,9 +161,10 @@ static int gEnabled = 0;
     dispatch_once(&once, ^{ t = [GBGestureTarget new]; });
     return t;
 }
+// Brings the SMS panel back after it was closed with its X.
 - (void)handle:(UILongPressGestureRecognizer *)g {
     if (g.state != UIGestureRecognizerStateBegan) return;
-    [GBMenu presentFromWindow:(UIWindow *)g.view];
+    [GBOverlay toggle];
 }
 @end
 
@@ -179,8 +180,8 @@ static void GBInstallGesture(void) {
     }
     if (!key) key = anyWindow;
     if (!key) return;
-    // Always-on-top draggable bubble that opens the panel with one tap.
-    [GBFloatingButton installInScene:key.windowScene];
+    // Persistent draggable SMS panel (bottom of the screen, touches outside it pass through).
+    [GBOverlay installInScene:key.windowScene];
     // Avoid stacking recognizers if the window becomes active repeatedly.
     for (UIGestureRecognizer *r in key.gestureRecognizers) {
         if ([r.name isEqualToString:@"HeavenzyMenu"]) return;
@@ -229,15 +230,15 @@ static void GBInstallGesture(void) {
         // reporter (the EXC_GUARD launch crash on Instagram/Facebook).
         %init;
 
-        // The floating button + menu are always available (even when spoofing is off) so the user
-        // can reach them / opt this app in. Re-assert on every activation…
+        // The SMS panel is available in every app (even when spoofing is off). Re-assert on every
+        // activation (the panel itself is only created once per scene)…
         [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidBecomeActiveNotification
                                                           object:nil queue:[NSOperationQueue mainQueue]
                                                       usingBlock:^(NSNotification *note) {
             GBInstallGesture();
         }];
         // …and retry a few times after launch, because the app's key window/scene often isn't ready
-        // the instant the tweak loads (that's why the bubble could be missing before).
+        // the instant the tweak loads.
         for (NSNumber *delay in @[ @0.5, @1.5, @3.0, @5.0 ]) {
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay.doubleValue * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
                 GBInstallGesture();

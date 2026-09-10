@@ -34,12 +34,15 @@
 + (BOOL)wipePendingForApp:(NSString *)bundleId;
 + (void)setWipePending:(BOOL)pending forApp:(NSString *)bundleId;
 
-/// Global Bundle.social credentials (org-level API key + optional team id), shared by every app.
-/// Stored once (not per-bundle) and mirrored into each app container so the in-app button can reach
-/// it. Team id is optional — the tweak resolves it from the organization when left blank.
-+ (NSString *)bundleKey;
-+ (void)setBundleKey:(NSString *)key;
-+ (NSString *)bundleTeam;
-+ (void)setBundleTeam:(NSString *)team;
+/// Global SMS-verification settings (provider + API keys), shared by every app. Stored once (not
+/// per-bundle) and mirrored into each app container so the in-app SMS panel can reach them.
++ (NSString *)smsProvider;   // "diddy" | "grizzly"
++ (void)setSmsProvider:(NSString *)provider;
++ (NSString *)diddyKey;
++ (void)setDiddyKey:(NSString *)key;
++ (NSString *)grizzlyKey;
++ (void)setGrizzlyKey:(NSString *)key;
++ (NSString *)grizzlyMaxPrice;
++ (void)setGrizzlyMaxPrice:(NSString *)price;
 
 @end

@@ -84,24 +84,26 @@
     [self write:cfg];
 }
 
-#pragma mark Bundle.social credentials (global, reserved __bundlesocial key)
+#pragma mark SMS settings (global, reserved __sms key)
 
 // Stored under a top-level key that can never collide with a real bundle id (those never start "__").
-+ (NSString *)bundleKey  { id d = [self all][@"__bundlesocial"]; return [d isKindOfClass:NSDictionary.class] ? d[@"key"]  : nil; }
-+ (NSString *)bundleTeam { id d = [self all][@"__bundlesocial"]; return [d isKindOfClass:NSDictionary.class] ? d[@"team"] : nil; }
++ (id)smsField:(NSString *)k { id d = [self all][@"__sms"]; return [d isKindOfClass:NSDictionary.class] ? d[k] : nil; }
 
-+ (void)setBundleKey:(NSString *)key {
++ (void)setSmsField:(NSString *)k value:(NSString *)v {
     NSMutableDictionary *cfg = [[self all] mutableCopy];
-    NSMutableDictionary *e = [self mutableEntry:@"__bundlesocial" in:cfg];
-    if (key.length) e[@"key"] = key; else [e removeObjectForKey:@"key"];
+    NSMutableDictionary *e = [self mutableEntry:@"__sms" in:cfg];
+    if (v.length) e[k] = v; else [e removeObjectForKey:k];
     [self write:cfg];
 }
 
-+ (void)setBundleTeam:(NSString *)team {
-    NSMutableDictionary *cfg = [[self all] mutableCopy];
-    NSMutableDictionary *e = [self mutableEntry:@"__bundlesocial" in:cfg];
-    if (team.length) e[@"team"] = team; else [e removeObjectForKey:@"team"];
-    [self write:cfg];
-}
++ (NSString *)smsProvider     { NSString *p = [self smsField:@"provider"]; return p.length ? p : @"diddy"; }
++ (NSString *)diddyKey        { return [self smsField:@"diddyKey"]; }
++ (NSString *)grizzlyKey      { return [self smsField:@"grizzlyKey"]; }
++ (NSString *)grizzlyMaxPrice { return [self smsField:@"grizzlyMaxPrice"]; }
+
++ (void)setSmsProvider:(NSString *)provider { [self setSmsField:@"provider" value:[provider isEqualToString:@"grizzly"] ? @"grizzly" : @"diddy"]; }
++ (void)setDiddyKey:(NSString *)key         { [self setSmsField:@"diddyKey" value:key]; }
++ (void)setGrizzlyKey:(NSString *)key       { [self setSmsField:@"grizzlyKey" value:key]; }
++ (void)setGrizzlyMaxPrice:(NSString *)price{ [self setSmsField:@"grizzlyMaxPrice" value:price]; }
 
 @end

@@ -28,14 +28,17 @@
     return [prefsDir stringByAppendingPathComponent:@"com.heavenzy.plist"];
 }
 
-// Merge the current global Bundle.social key/team into a mutable container dict.
-+ (void)applyBundleAuthInto:(NSMutableDictionary *)d {
-    NSString *key = [HZConfig bundleKey], *team = [HZConfig bundleTeam];
-    if (key.length)  d[@"bundleKey"]  = key;  else [d removeObjectForKey:@"bundleKey"];
-    if (team.length) d[@"bundleTeam"] = team; else [d removeObjectForKey:@"bundleTeam"];
+// Merge the current global SMS settings into a mutable container dict.
++ (void)applySmsSettingsInto:(NSMutableDictionary *)d {
+    NSString *provider = [HZConfig smsProvider], *dk = [HZConfig diddyKey],
+             *gk = [HZConfig grizzlyKey], *mp = [HZConfig grizzlyMaxPrice];
+    d[@"smsProvider"] = provider.length ? provider : @"diddy";
+    if (dk.length) d[@"diddyKey"]        = dk; else [d removeObjectForKey:@"diddyKey"];
+    if (gk.length) d[@"grizzlyKey"]      = gk; else [d removeObjectForKey:@"grizzlyKey"];
+    if (mp.length) d[@"grizzlyMaxPrice"] = mp; else [d removeObjectForKey:@"grizzlyMaxPrice"];
 }
 
-+ (NSInteger)writeBundleKey:(NSString *)key team:(NSString *)team {
++ (NSInteger)writeSmsSettingsToAllApps {
     NSInteger n = 0;
     @try {
         Class wsClass = NSClassFromString(@"LSApplicationWorkspace");
@@ -47,8 +50,7 @@
             NSString *path = [self plistPathForApp:bid];
             if (!path) continue;
             NSMutableDictionary *d = [[NSDictionary dictionaryWithContentsOfFile:path] mutableCopy] ?: [NSMutableDictionary dictionary];
-            if (key.length)  d[@"bundleKey"]  = key;  else [d removeObjectForKey:@"bundleKey"];
-            if (team.length) d[@"bundleTeam"] = team; else [d removeObjectForKey:@"bundleTeam"];
+            [self applySmsSettingsInto:d];
             if ([d writeToFile:path atomically:YES]) n++;
         }
     } @catch (__unused NSException *e) {}
@@ -94,7 +96,7 @@
     set(@"imei",      i[@"imei"]);
     d[@"deviceName"] = @"iPhone";
 
-    [self applyBundleAuthInto:d];   // keep the app's copy of the Bundle.social key/team fresh
+    [self applySmsSettingsInto:d];   // keep the app's copy of the SMS provider settings fresh
 
     return [d writeToFile:path atomically:YES];
 }

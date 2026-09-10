@@ -47,12 +47,14 @@
 @property (nonatomic, copy) NSString *timeZoneName;    // IANA, e.g. "America/New_York"
 @property (nonatomic, copy) NSString *localeId;        // e.g. "en_US" (NSLocale)
 
-// Floating button position (points, top-left of the 44pt bubble). Negative = not set yet.
+// Saved SMS-panel position (top-left of the card, points). Negative = not set yet.
 @property (nonatomic, assign) CGPoint floatingOrigin;
 
-// Bundle.social credentials mirrored in by the control app (used by the in-app Instagram button).
-@property (nonatomic, copy) NSString *bundleKey;
-@property (nonatomic, copy) NSString *bundleTeam;
+// SMS provider settings mirrored in by the control app (used by the in-app SMS panel).
+@property (nonatomic, copy) NSString *smsProvider;      // "diddy" | "grizzly"
+@property (nonatomic, copy) NSString *diddyKey;
+@property (nonatomic, copy) NSString *grizzlyKey;
+@property (nonatomic, copy) NSString *grizzlyMaxPrice;
 
 /// Native pixel dimensions (points * scale) — what UIScreen.nativeBounds should report.
 @property (nonatomic, readonly) NSInteger nativePixelsW;

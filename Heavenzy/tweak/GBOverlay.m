@@ -30,8 +30,10 @@ static UILabel *GBLabel(NSString *t, CGFloat size, UIFontWeight w, UIColor *c) {
 @property (nonatomic, strong) UIButton *againButton;
 
 @property (nonatomic, copy)   NSString *orderId;
+@property (nonatomic, copy)   NSString *orderProvider;   // provider the current order was placed with
 @property (nonatomic, strong) NSTimer *pollTimer;
 @property (nonatomic, assign) NSInteger pollTicks;
+- (void)refreshServiceLine;
 @end
 
 @implementation GBOverlayController
@@ -120,6 +122,8 @@ static UILabel *GBLabel(NSString *t, CGFloat size, UIFontWeight w, UIColor *c) {
     return [NSString stringWithFormat:@"%@ · %@ · USA", [GBSMS providerLabel], [GBSMS serviceLabel]];
 }
 
+- (void)refreshServiceLine { self.serviceLabel.text = [self serviceLine]; }
+
 - (UIButton *)wideButton:(NSString *)t bg:(UIColor *)bg fg:(UIColor *)fg {
     UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
     [b setTitle:t forState:UIControlStateNormal];
@@ -180,18 +184,22 @@ static UILabel *GBLabel(NSString *t, CGFloat size, UIFontWeight w, UIColor *c) {
 
 - (void)getTapped {
     [self.pollTimer invalidate]; self.pollTimer = nil;
+    [[GBStore shared] reloadSmsSettings];
+    [self refreshServiceLine];
     self.getButton.enabled = NO;
     [self.getButton setTitle:@"Requesting…" forState:UIControlStateNormal];
     self.phoneLabel.hidden = YES; self.codeLabel.hidden = YES; self.againButton.hidden = YES;
     self.statusLabel.hidden = NO; self.statusLabel.textColor = GBSubtle();
     self.statusLabel.text = @"Requesting a number…";
     __weak typeof(self) w = self;
+    NSString *provider = [GBSMS currentProvider];
     [GBSMS requestNumberWithCompletion:^(NSString *phone, NSString *orderId, NSString *service, NSString *error) {
         __strong typeof(w) s = w; if (!s) return;
         s.getButton.enabled = YES;
         [s.getButton setTitle:@"Get Number" forState:UIControlStateNormal];
         if (error) { s.statusLabel.textColor = [UIColor systemRedColor]; s.statusLabel.text = error; return; }
         s.orderId = orderId;
+        s.orderProvider = provider;
         s.getButton.hidden = YES;
         s.phoneLabel.hidden = NO; s.phoneLabel.text = [s prettyPhone:phone];
         s.againButton.hidden = NO;
@@ -221,7 +229,7 @@ static UILabel *GBLabel(NSString *t, CGFloat size, UIFontWeight w, UIColor *c) {
             s.statusLabel.text = @"Timed out — tap New Number to try again.";
             return;
         }
-        [GBSMS pollOrder:s.orderId completion:^(NSString *code, NSString *error) {
+        [GBSMS pollOrder:s.orderId provider:s.orderProvider completion:^(NSString *code, NSString *error) {
             __strong typeof(w) s2 = w; if (!s2) return;
             if (error) { return; }   // transient; keep polling
             if (code.length) {
@@ -237,8 +245,8 @@ static UILabel *GBLabel(NSString *t, CGFloat size, UIFontWeight w, UIColor *c) {
 
 - (void)newTapped {
     [self.pollTimer invalidate]; self.pollTimer = nil;
-    if (self.orderId) [GBSMS cancelOrder:self.orderId];
-    self.orderId = nil;
+    if (self.orderId) [GBSMS cancelOrder:self.orderId provider:self.orderProvider];
+    self.orderId = nil; self.orderProvider = nil;
     self.phoneLabel.hidden = YES; self.codeLabel.hidden = YES; self.againButton.hidden = YES;
     self.statusLabel.hidden = YES;
     self.getButton.hidden = NO; self.getButton.enabled = YES;
@@ -286,6 +294,9 @@ static NSMapTable<UIWindowScene *, GBOverlay *> *gOverlays;
 // Show without permanently stealing key focus (so the app keeps its keyboard). Force an initial
 // render once via makeKeyAndVisible, then hand key back to the app.
 - (void)present {
+    // Pick up provider/key changes made in the Heavenzy app since launch and refresh the header line.
+    [[GBStore shared] reloadSmsSettings];
+    [(GBOverlayController *)self.rootViewController refreshServiceLine];
     self.hidden = NO;
     static BOOL forcedOnce = NO;
     if (!forcedOnce) {

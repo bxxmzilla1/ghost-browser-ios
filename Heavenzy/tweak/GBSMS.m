@@ -41,6 +41,7 @@ static NSString *GBDigits(NSString *s) {
 }
 
 + (BOOL)useGrizzly { return [[GBStore shared].smsProvider isEqualToString:@"grizzly"]; }
++ (NSString *)currentProvider { return [self useGrizzly] ? @"grizzly" : @"diddy"; }
 + (NSString *)providerLabel { return [self useGrizzly] ? @"GrizzlySMS" : @"DiddySMS"; }
 
 + (NSString *)grizzlyServiceCode {
@@ -85,6 +86,7 @@ static NSString *GBDigits(NSString *s) {
 #pragma mark - Request number
 
 + (void)requestNumberWithCompletion:(void (^)(NSString *, NSString *, NSString *, NSString *))completion {
+    [[GBStore shared] reloadSmsSettings];   // honour a provider/key switch made in the Heavenzy app
     if ([self useGrizzly]) [self grizzlyRequest:completion];
     else                   [self diddyRequest:completion];
 }
@@ -192,9 +194,9 @@ static NSString *GBDigits(NSString *s) {
 
 #pragma mark - Poll
 
-+ (void)pollOrder:(NSString *)orderId completion:(void (^)(NSString *, NSString *))completion {
++ (void)pollOrder:(NSString *)orderId provider:(NSString *)provider completion:(void (^)(NSString *, NSString *))completion {
     if (orderId.length == 0) { dispatch_async(dispatch_get_main_queue(), ^{ completion(nil, @"no order"); }); return; }
-    if ([self useGrizzly]) {
+    if ([provider isEqualToString:@"grizzly"]) {
         NSString *key = [[GBStore shared].grizzlyKey stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] ?: @"";
         NSURLComponents *comp = [NSURLComponents componentsWithString:kGrizzlyBase];
         comp.queryItems = @[ [NSURLQueryItem queryItemWithName:@"api_key" value:key],
@@ -238,8 +240,8 @@ static NSString *GBDigits(NSString *s) {
     [[[NSURLSession sharedSession] dataTaskWithURL:comp.URL] resume];
 }
 
-+ (void)cancelOrder:(NSString *)orderId {
-    if (![self useGrizzly] || orderId.length == 0) return;   // DiddySMS orders expire on their own
++ (void)cancelOrder:(NSString *)orderId provider:(NSString *)provider {
+    if (![provider isEqualToString:@"grizzly"] || orderId.length == 0) return;   // DiddySMS orders expire on their own
     NSString *key = [[GBStore shared].grizzlyKey stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] ?: @"";
     [self cancelOrGrizzlyFinish:orderId status:8 key:key];   // 8 = cancel + refund
 }

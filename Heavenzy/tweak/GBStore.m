@@ -47,10 +47,7 @@ static NSString *GBPrefsPath(void) {
     _localeId      = [d[@"localeId"] copy];
     _floatingOrigin = CGPointMake(d[@"floatX"] ? [d[@"floatX"] doubleValue] : -1,
                                   d[@"floatY"] ? [d[@"floatY"] doubleValue] : -1);
-    _smsProvider     = [d[@"smsProvider"] copy] ?: @"diddy";
-    _diddyKey        = [d[@"diddyKey"] copy];
-    _grizzlyKey      = [d[@"grizzlyKey"] copy];
-    _grizzlyMaxPrice = [d[@"grizzlyMaxPrice"] copy];
+    [self readSmsSettingsFrom:d];
 
     // If the in-app panel never configured this app, fall back to what the Heavenzy control app set
     // centrally for this bundle id (Ghost model). Adopted into the local container so it sticks even
@@ -68,17 +65,35 @@ static NSString *GBPrefsPath(void) {
         }
     }
 
-    // SMS settings normally arrive via the control app writing our container plist; if they're not
-    // there yet but the central store is reachable (libSandy), adopt them as a fallback.
-    if (_diddyKey.length == 0 && _grizzlyKey.length == 0) {
-        [HZConfig grantSandboxAccess];
-        NSString *dk = [HZConfig diddyKey], *gk = [HZConfig grizzlyKey];
-        if (dk.length || gk.length) {
-            _smsProvider = [[HZConfig smsProvider] copy] ?: @"diddy";
-            _diddyKey = [dk copy]; _grizzlyKey = [gk copy];
-            _grizzlyMaxPrice = [[HZConfig grizzlyMaxPrice] copy];
-        }
+    [self adoptCentralSmsSettingsIfMissing];
+}
+
+- (void)readSmsSettingsFrom:(NSDictionary *)d {
+    _smsProvider     = [d[@"smsProvider"] copy] ?: @"diddy";
+    _diddyKey        = [d[@"diddyKey"] copy];
+    _grizzlyKey      = [d[@"grizzlyKey"] copy];
+    _grizzlyMaxPrice = [d[@"grizzlyMaxPrice"] copy];
+}
+
+// SMS settings normally arrive via the control app writing our container plist; if they're not
+// there yet but the central store is reachable (libSandy), adopt them as a fallback.
+- (void)adoptCentralSmsSettingsIfMissing {
+    if (_diddyKey.length || _grizzlyKey.length) return;
+    [HZConfig grantSandboxAccess];
+    NSString *dk = [HZConfig diddyKey], *gk = [HZConfig grizzlyKey];
+    if (dk.length || gk.length) {
+        _smsProvider = [[HZConfig smsProvider] copy] ?: @"diddy";
+        _diddyKey = [dk copy]; _grizzlyKey = [gk copy];
+        _grizzlyMaxPrice = [[HZConfig grizzlyMaxPrice] copy];
     }
+}
+
+// The control app rewrites the SMS keys in our plist while we're running (Settings → provider/keys).
+// Re-read just those so the panel reflects the change without relaunching the app.
+- (void)reloadSmsSettings {
+    NSDictionary *d = [NSDictionary dictionaryWithContentsOfFile:GBPrefsPath()];
+    [self readSmsSettingsFrom:d];
+    [self adoptCentralSmsSettingsIfMissing];
 }
 
 // Maps the shared HZDevice-schema identity onto this store's fields. Only identifiers are applied —
@@ -101,6 +116,10 @@ static NSString *GBPrefsPath(void) {
 }
 
 - (void)save {
+    // The SMS keys are owned by the control app — pick up its latest values before writing so a
+    // panel-position save can't overwrite a provider/key change made while we were running.
+    NSDictionary *onDisk = [NSDictionary dictionaryWithContentsOfFile:GBPrefsPath()];
+    if (onDisk) [self readSmsSettingsFrom:onDisk];
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     d[@"enabled"]       = @(_enabled);
     if (_wipePending)   d[@"wipePending"]   = @YES;

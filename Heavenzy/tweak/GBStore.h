@@ -56,6 +56,9 @@
 @property (nonatomic, copy) NSString *grizzlyKey;
 @property (nonatomic, copy) NSString *grizzlyMaxPrice;
 
+/// Re-read only the SMS settings from disk (the control app updates them while we run).
+- (void)reloadSmsSettings;
+
 /// Native pixel dimensions (points * scale) — what UIScreen.nativeBounds should report.
 @property (nonatomic, readonly) NSInteger nativePixelsW;
 @property (nonatomic, readonly) NSInteger nativePixelsH;

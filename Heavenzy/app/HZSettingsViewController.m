@@ -1,9 +1,7 @@
 #import "HZSettingsViewController.h"
+#import "HZTheme.h"
 #import "HZConfig.h"
 #import "HZContainerSync.h"
-
-static UIColor *HZAccent(void) { return [UIColor colorWithRed:0.55 green:0.45 blue:0.98 alpha:1.0]; }
-static UIColor *HZCellBG(void) { return [UIColor colorWithRed:0.11 green:0.11 blue:0.14 alpha:1.0]; }
 
 typedef NS_ENUM(NSInteger, HZSection) { HZSectionProvider, HZSectionDiddy, HZSectionGrizzly, HZSectionCount };
 
@@ -20,20 +18,33 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionProvider, HZSectionDiddy, HZSec
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"Settings";
-    self.view.backgroundColor = [UIColor colorWithRed:0.06 green:0.06 blue:0.08 alpha:1.0];
-    self.tableView.backgroundColor = self.view.backgroundColor;
+    self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
+    self.view.backgroundColor = HZBG();
+    HZStyleTable(self.tableView);
     self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
 
-    self.diddyKeyField     = [self field:@"DiddySMS API key" text:[HZConfig diddyKey] secure:YES];
-    self.grizzlyKeyField   = [self field:@"GrizzlySMS API key" text:[HZConfig grizzlyKey] secure:YES];
-    self.grizzlyPriceField = [self field:@"Max price (optional, e.g. 0.50)" text:[HZConfig grizzlyMaxPrice] secure:NO];
+    self.diddyKeyField     = [self field:@"Paste your DiddySMS API key" text:[HZConfig diddyKey] secure:YES];
+    self.grizzlyKeyField   = [self field:@"Paste your GrizzlySMS API key" text:[HZConfig grizzlyKey] secure:YES];
+    self.grizzlyPriceField = [self field:@"Max price per number (optional, e.g. 0.50)" text:[HZConfig grizzlyMaxPrice] secure:NO];
     self.grizzlyPriceField.keyboardType = UIKeyboardTypeDecimalPad;
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    if (!self.tableView.tableHeaderView || self.tableView.tableHeaderView.frame.size.width != self.tableView.bounds.size.width) {
+        UIImageSymbolConfiguration *c = [UIImageSymbolConfiguration configurationWithPointSize:56 weight:UIImageSymbolWeightMedium];
+        UIImage *img = [[UIImage systemImageNamed:@"message.fill" withConfiguration:c]
+                        imageWithTintColor:HZAccent() renderingMode:UIImageRenderingModeAlwaysOriginal];
+        UIView *h = HZHeroHeader(self.tableView.bounds.size.width, img, YES, @"SMS Verification",
+            @"Order a USA number and read the code from inside any app — hold two fingers on the screen to open the panel.", nil);
+        self.tableView.tableHeaderView = h;
+    }
 }
 
 - (UITextField *)field:(NSString *)placeholder text:(NSString *)text secure:(BOOL)secure {
     UITextField *tf = [UITextField new];
     tf.attributedPlaceholder = [[NSAttributedString alloc] initWithString:placeholder
-        attributes:@{ NSForegroundColorAttributeName: [UIColor colorWithWhite:0.45 alpha:1.0] }];
+        attributes:@{ NSForegroundColorAttributeName: HZTextMuted() }];
     tf.text = text ?: @"";
     tf.textColor = UIColor.whiteColor;
     tf.tintColor = HZAccent();
@@ -86,7 +97,7 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionProvider, HZSectionDiddy, HZSec
 
 - (NSString *)tableView:(UITableView *)tv titleForHeaderInSection:(NSInteger)s {
     switch (s) {
-        case HZSectionProvider: return @"SMS PROVIDER";
+        case HZSectionProvider: return @"PROVIDER";
         case HZSectionDiddy:    return @"DIDDYSMS";
         case HZSectionGrizzly:  return @"GRIZZLYSMS";
     }
@@ -96,31 +107,42 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionProvider, HZSectionDiddy, HZSec
 - (NSString *)tableView:(UITableView *)tv titleForFooterInSection:(NSInteger)s {
     switch (s) {
         case HZSectionProvider:
-            return @"The Heavenzy SMS panel inside each app uses this provider to order a number and read the "
-                   @"verification code. The service is detected from the app's name (Instagram → instagram / ig) "
-                   @"and the country is always USA.";
+            return @"The service is detected from the app's name (Instagram → instagram / ig) and the country "
+                   @"is always USA.";
         case HZSectionDiddy:
-            return @"Bearer API key from your DiddySMS dashboard. US numbers; carriers are tried automatically.";
+            return @"Bearer key from your DiddySMS dashboard. US numbers; carriers are tried automatically.";
         case HZSectionGrizzly:
             return @"API key from grizzlysms.com. Max price caps how much a single number may cost.";
     }
     return nil;
 }
 
+- (void)tableView:(UITableView *)tv willDisplayHeaderView:(UIView *)v forSection:(NSInteger)s { HZStyleHeaderFooter(v); }
+- (void)tableView:(UITableView *)tv willDisplayFooterView:(UIView *)v forSection:(NSInteger)s { HZStyleHeaderFooter(v); }
+
 - (UITableViewCell *)tableView:(UITableView *)tv cellForRowAtIndexPath:(NSIndexPath *)ip {
     UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];
-    cell.backgroundColor = HZCellBG();
+    cell.backgroundColor = HZCard();
     cell.textLabel.textColor = UIColor.whiteColor;
-    cell.detailTextLabel.textColor = [UIColor colorWithWhite:0.55 alpha:1.0];
+    cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
+    cell.detailTextLabel.textColor = HZTextMuted();
+    cell.detailTextLabel.font = [UIFont systemFontOfSize:12];
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
+    UIView *sel = [UIView new]; sel.backgroundColor = HZCardElevated(); cell.selectedBackgroundView = sel;
     cell.tintColor = HZAccent();
 
     if (ip.section == HZSectionProvider) {
         BOOL grizzly = [[HZConfig smsProvider] isEqualToString:@"grizzly"];
         BOOL isGrizzlyRow = ip.row == 1;
+        BOOL selected = grizzly == isGrizzlyRow;
         cell.textLabel.text = isGrizzlyRow ? @"GrizzlySMS" : @"DiddySMS";
-        cell.detailTextLabel.text = isGrizzlyRow ? @"sms-activate protocol · numeric country 187 (USA)" : @"api.diddysms.com · US numbers";
-        cell.accessoryType = (grizzly == isGrizzlyRow) ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
+        cell.detailTextLabel.text = isGrizzlyRow ? @"sms-activate protocol · country 187 (USA)" : @"api.diddysms.com · US carriers";
+        cell.imageView.image = [UIImage systemImageNamed:isGrizzlyRow ? @"pawprint.fill" : @"bolt.fill"];
+        cell.imageView.tintColor = selected ? HZAccent() : HZTextMuted();
+        UIImageSymbolConfiguration *c = [UIImageSymbolConfiguration configurationWithPointSize:20 weight:UIImageSymbolWeightSemibold];
+        UIImageView *check = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:selected ? @"checkmark.circle.fill" : @"circle" withConfiguration:c]];
+        check.tintColor = selected ? HZAccent() : HZTextMuted();
+        cell.accessoryView = check;
         cell.selectionStyle = UITableViewCellSelectionStyleDefault;
         return cell;
     }
@@ -128,13 +150,19 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionProvider, HZSectionDiddy, HZSec
     UITextField *tf = nil;
     if (ip.section == HZSectionDiddy) tf = self.diddyKeyField;
     else tf = ip.row == 0 ? self.grizzlyKeyField : self.grizzlyPriceField;
-    tf.translatesAutoresizingMaskIntoConstraints = NO;
-    [cell.contentView addSubview:tf];
+    UIImageView *icon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:
+        (ip.section == HZSectionGrizzly && ip.row == 1) ? @"dollarsign.circle" : @"key.fill"]];
+    icon.tintColor = HZAccent();
+    icon.contentMode = UIViewContentModeScaleAspectFit;
+    for (UIView *v in @[ icon, tf ]) { v.translatesAutoresizingMaskIntoConstraints = NO; [cell.contentView addSubview:v]; }
     [NSLayoutConstraint activateConstraints:@[
-        [tf.leadingAnchor constraintEqualToAnchor:cell.contentView.layoutMarginsGuide.leadingAnchor],
-        [tf.trailingAnchor constraintEqualToAnchor:cell.contentView.layoutMarginsGuide.trailingAnchor],
-        [tf.topAnchor constraintEqualToAnchor:cell.contentView.topAnchor constant:12],
-        [tf.bottomAnchor constraintEqualToAnchor:cell.contentView.bottomAnchor constant:-12],
+        [icon.leadingAnchor constraintEqualToAnchor:cell.contentView.leadingAnchor constant:16],
+        [icon.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor],
+        [icon.widthAnchor constraintEqualToConstant:22], [icon.heightAnchor constraintEqualToConstant:22],
+        [tf.leadingAnchor constraintEqualToAnchor:icon.trailingAnchor constant:12],
+        [tf.trailingAnchor constraintEqualToAnchor:cell.contentView.trailingAnchor constant:-16],
+        [tf.topAnchor constraintEqualToAnchor:cell.contentView.topAnchor constant:14],
+        [tf.bottomAnchor constraintEqualToAnchor:cell.contentView.bottomAnchor constant:-14],
     ]];
     return cell;
 }

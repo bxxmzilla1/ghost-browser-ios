@@ -1,8 +1,8 @@
 Package: com.heavenzy.tweak
 Name: Heavenzy
-Version: 1.3.0
+Version: 1.3.1
 Architecture: iphoneos-arm64
-Description: Per-app device identity reset (Blaze-style): keeps your real iPhone model but resets serial, UDID, IDFV, IDFA, Wi-Fi/Bluetooth MAC and IMEI, plus a wipe + re-spoof that clears saved accounts and blocks iCloud restore, so an app sees a brand-new phone with a first-time install. A draggable Heavenzy SMS panel floats over every app (touches pass through around it) to order a USA number via DiddySMS or GrizzlySMS and show the verification code; the service is detected from the app name. Configure apps and SMS API keys in the Heavenzy app. Close the panel with its X; two-finger long-press brings it back.
+Description: Per-app device identity reset (Blaze-style): keeps your real iPhone model but resets serial, UDID, IDFV, IDFA, Wi-Fi/Bluetooth MAC and IMEI, plus a wipe + re-spoof that clears saved accounts and blocks iCloud restore, so an app sees a brand-new phone with a first-time install. Hold two fingers on any app to open the draggable Heavenzy SMS panel (touches pass through around it) to order a USA number via DiddySMS or GrizzlySMS and show the verification code; the service is detected from the app name. Configure apps and SMS API keys in the Heavenzy app. Close the panel with its X.
 Maintainer: Heavenzy
 Author: Heavenzy
 Section: Tweaks

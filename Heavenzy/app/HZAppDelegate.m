@@ -1,5 +1,6 @@
 #import "HZAppDelegate.h"
 #import "HZAppListViewController.h"
+#import "HZTheme.h"
 #import "HZConfig.h"
 
 @implementation HZAppDelegate
@@ -9,13 +10,12 @@
     [HZConfig grantSandboxAccess];
 
     self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
+    self.window.backgroundColor = HZBG();
+    self.window.tintColor = HZAccent();
 
     HZAppListViewController *list = [HZAppListViewController new];
     UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:list];
-    nav.navigationBar.prefersLargeTitles = YES;
-    if (@available(iOS 13.0, *)) {
-        nav.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
-    }
+    HZStyleNavigation(nav);
 
     self.window.rootViewController = nav;
     [self.window makeKeyAndVisible];

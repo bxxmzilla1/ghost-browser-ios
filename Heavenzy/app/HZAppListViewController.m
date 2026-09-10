@@ -1,11 +1,60 @@
 #import "HZAppListViewController.h"
 #import "HZAppDetailViewController.h"
 #import "HZSettingsViewController.h"
+#import "HZTheme.h"
 #import "HZConfig.h"
 #import "HZDevice.h"
 #import "HZContainerSync.h"
 
-static UIColor *HZAccent(void) { return [UIColor colorWithRed:0.55 green:0.45 blue:0.98 alpha:1.0]; }
+#pragma mark - Row cell
+
+@interface HZAppCell : UITableViewCell
+@property (nonatomic, strong) UIImageView *icon;
+@property (nonatomic, strong) UILabel *name;
+@property (nonatomic, strong) UILabel *subtitle;
+@property (nonatomic, strong) UISwitch *toggle;
+@end
+
+@implementation HZAppCell
+- (instancetype)initWithStyle:(UITableViewCellStyle)style reuseIdentifier:(NSString *)rid {
+    if ((self = [super initWithStyle:style reuseIdentifier:rid])) {
+        self.backgroundColor = HZCard();
+        UIView *sel = [UIView new]; sel.backgroundColor = HZCardElevated(); self.selectedBackgroundView = sel;
+
+        _icon = [UIImageView new];
+        _icon.layer.cornerRadius = 11; _icon.clipsToBounds = YES;
+        _icon.layer.borderWidth = 0.5; _icon.layer.borderColor = HZHairline().CGColor;
+        _name = [UILabel new];
+        _name.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
+        _name.textColor = UIColor.whiteColor;
+        _subtitle = [UILabel new];
+        _subtitle.font = [UIFont systemFontOfSize:12 weight:UIFontWeightRegular];
+        _subtitle.textColor = HZTextMuted();
+        _subtitle.lineBreakMode = NSLineBreakByTruncatingMiddle;
+        _toggle = [UISwitch new];
+        _toggle.onTintColor = HZAccent();
+
+        UIStackView *text = [[UIStackView alloc] initWithArrangedSubviews:@[ _name, _subtitle ]];
+        text.axis = UILayoutConstraintAxisVertical; text.spacing = 2;
+        for (UIView *v in @[ _icon, text, _toggle ]) { v.translatesAutoresizingMaskIntoConstraints = NO; [self.contentView addSubview:v]; }
+        [NSLayoutConstraint activateConstraints:@[
+            [_icon.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:16],
+            [_icon.centerYAnchor constraintEqualToAnchor:self.contentView.centerYAnchor],
+            [_icon.widthAnchor constraintEqualToConstant:46], [_icon.heightAnchor constraintEqualToConstant:46],
+            [_icon.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:12],
+            [_icon.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-12],
+            [text.leadingAnchor constraintEqualToAnchor:_icon.trailingAnchor constant:14],
+            [text.centerYAnchor constraintEqualToAnchor:self.contentView.centerYAnchor],
+            [text.trailingAnchor constraintEqualToAnchor:_toggle.leadingAnchor constant:-12],
+            [_toggle.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-16],
+            [_toggle.centerYAnchor constraintEqualToAnchor:self.contentView.centerYAnchor],
+        ]];
+    }
+    return self;
+}
+@end
+
+#pragma mark - List
 
 @interface HZAppListViewController () <UISearchResultsUpdating>
 @property (nonatomic, strong) NSArray<NSDictionary *> *apps;   // {@"id", @"name"}
@@ -20,34 +69,50 @@ static UIColor *HZAccent(void) { return [UIColor colorWithRed:0.55 green:0.45 bl
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"Heavenzy";
-    self.view.backgroundColor = [UIColor colorWithRed:0.06 green:0.06 blue:0.08 alpha:1.0];
-    self.tableView.backgroundColor = self.view.backgroundColor;
-    self.navigationController.navigationBar.tintColor = HZAccent();
+    self.view.backgroundColor = HZBG();
+    HZStyleTable(self.tableView);
+    [self.tableView registerClass:HZAppCell.class forCellReuseIdentifier:@"app"];
 
     self.search = [[UISearchController alloc] initWithSearchResultsController:nil];
     self.search.obscuresBackgroundDuringPresentation = NO;
     self.search.searchResultsUpdater = self;
     self.search.searchBar.placeholder = @"Search apps";
+    self.search.searchBar.tintColor = HZAccent();
+    self.search.searchBar.searchTextField.backgroundColor = HZCard();
     self.navigationItem.searchController = self.search;
-    self.navigationItem.hidesSearchBarWhenScrolling = NO;
+    self.navigationItem.hidesSearchBarWhenScrolling = YES;
 
-    UIBarButtonItem *settings = [[UIBarButtonItem alloc]
-        initWithImage:[UIImage systemImageNamed:@"gearshape"]
+    UIImageSymbolConfiguration *c = [UIImageSymbolConfiguration configurationWithPointSize:17 weight:UIImageSymbolWeightMedium];
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
+        initWithImage:[UIImage systemImageNamed:@"slider.horizontal.3" withConfiguration:c]
                 style:UIBarButtonItemStylePlain target:self action:@selector(showSettings)];
-    self.navigationItem.rightBarButtonItem = settings;
 
     [self loadApps];
 }
 
-#pragma mark - Settings (SMS providers)
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    [self refreshHeader];
+    [self.tableView reloadData];   // reflect enable/identity changes made in the detail screen
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    if (!self.tableView.tableHeaderView || self.tableView.tableHeaderView.frame.size.width != self.tableView.bounds.size.width) [self refreshHeader];
+}
+
+- (void)refreshHeader {
+    NSUInteger on = 0;
+    for (NSDictionary *a in self.apps) if ([HZConfig isEnabledForApp:a[@"id"]]) on++;
+    UIView *pill = HZPill(on ? [NSString stringWithFormat:@"%lu spoofed", (unsigned long)on] : @"nothing spoofed yet",
+                          on ? HZSuccess() : HZTextMuted());
+    self.tableView.tableHeaderView = HZHeroHeader(self.tableView.bounds.size.width, HZLogo(), YES, @"Device Identity",
+        @"Every app you switch on sees a brand-new iPhone — same model, fresh serial, UDID, IDFV, IDFA, MACs and IMEI.",
+        pill);
+}
 
 - (void)showSettings {
     [self.navigationController pushViewController:[HZSettingsViewController new] animated:YES];
-}
-
-- (void)viewWillAppear:(BOOL)animated {
-    [super viewWillAppear:animated];
-    [self.tableView reloadData];   // reflect enable/identity changes made in the detail screen
 }
 
 - (void)loadApps {
@@ -73,6 +138,7 @@ static UIColor *HZAccent(void) { return [UIColor colorWithRed:0.55 green:0.45 bl
     }];
     self.apps = out;
     self.filtered = out;
+    [self refreshHeader];
     [self.tableView reloadData];
 }
 
@@ -96,40 +162,35 @@ static UIColor *HZAccent(void) { return [UIColor colorWithRed:0.55 green:0.45 bl
 #pragma mark - Table
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tv { return 1; }
-
 - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)s { return self.rows.count; }
 
 - (NSString *)tableView:(UITableView *)tv titleForHeaderInSection:(NSInteger)s {
-    return [NSString stringWithFormat:@"APPLICATIONS (%lu)", (unsigned long)self.apps.count];
+    return [NSString stringWithFormat:@"APPLICATIONS · %lu", (unsigned long)self.rows.count];
 }
 
 - (NSString *)tableView:(UITableView *)tv titleForFooterInSection:(NSInteger)s {
-    return @"Turn on an app to spoof it, then open (or relaunch) that app to apply. Tap a row to choose "
-           @"the device and erase its data.";
+    return @"Switch an app on, then open or relaunch it to apply. Tap a row for its identity, a fresh one, "
+           @"or to erase its data. Inside any app, hold two fingers to open the SMS panel.";
 }
 
+- (void)tableView:(UITableView *)tv willDisplayHeaderView:(UIView *)v forSection:(NSInteger)s { HZStyleHeaderFooter(v); }
+- (void)tableView:(UITableView *)tv willDisplayFooterView:(UIView *)v forSection:(NSInteger)s { HZStyleHeaderFooter(v); }
+
 - (UITableViewCell *)tableView:(UITableView *)tv cellForRowAtIndexPath:(NSIndexPath *)ip {
-    UITableViewCell *cell = [tv dequeueReusableCellWithIdentifier:@"app"];
-    if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"app"];
+    HZAppCell *cell = [tv dequeueReusableCellWithIdentifier:@"app" forIndexPath:ip];
     NSDictionary *app = self.rows[ip.row];
     NSString *bid = app[@"id"];
-
-    cell.backgroundColor = [UIColor colorWithRed:0.11 green:0.11 blue:0.14 alpha:1.0];
-    cell.textLabel.text = app[@"name"];
-    cell.textLabel.textColor = UIColor.whiteColor;
-
     BOOL enabled = [HZConfig isEnabledForApp:bid];
     NSDictionary *identity = [HZConfig identityForApp:bid];
-    cell.detailTextLabel.text = enabled ? (identity ? HZIdentitySummary(identity) : @"On") : bid;
-    cell.detailTextLabel.textColor = enabled ? HZAccent() : [UIColor colorWithWhite:0.55 alpha:1.0];
-    cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
 
-    UISwitch *sw = [UISwitch new];
-    sw.onTintColor = HZAccent();
-    sw.on = enabled;
-    sw.tag = ip.row;
-    [sw addTarget:self action:@selector(toggle:) forControlEvents:UIControlEventValueChanged];
-    cell.accessoryView = sw;
+    cell.icon.image = HZAppIcon(bid);
+    cell.name.text = app[@"name"];
+    cell.subtitle.text = enabled ? (identity ? HZIdentitySummary(identity) : @"Spoofing on") : bid;
+    cell.subtitle.textColor = enabled ? HZAccent() : HZTextMuted();
+    cell.toggle.on = enabled;
+    cell.toggle.tag = ip.row;
+    [cell.toggle removeTarget:nil action:NULL forControlEvents:UIControlEventValueChanged];
+    [cell.toggle addTarget:self action:@selector(toggle:) forControlEvents:UIControlEventValueChanged];
     return cell;
 }
 
@@ -144,7 +205,8 @@ static UIColor *HZAccent(void) { return [UIColor colorWithRed:0.55 green:0.45 bl
     // Push straight into the app's container so the tweak sees it without libSandy.
     [HZContainerSync writeForApp:bid identity:[HZConfig identityForApp:bid]
                          enabled:sw.on wipePending:[HZConfig wipePendingForApp:bid]];
-    [self.tableView reloadData];
+    [self refreshHeader];
+    [self.tableView reloadRowsAtIndexPaths:@[ [NSIndexPath indexPathForRow:row inSection:0] ] withRowAnimation:UITableViewRowAnimationNone];
 }
 
 - (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)ip {

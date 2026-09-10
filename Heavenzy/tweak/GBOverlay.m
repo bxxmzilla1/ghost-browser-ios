@@ -267,30 +267,20 @@ static UILabel *GBLabel(NSString *t, CGFloat size, UIFontWeight w, UIColor *c) {
 
 static NSMapTable<UIWindowScene *, GBOverlay *> *gOverlays;
 
-+ (void)installInScene:(UIWindowScene *)scene {
++ (void)showInScene:(UIWindowScene *)scene {
     if (!scene) return;
-    if (scene.activationState != UISceneActivationStateForegroundActive &&
-        scene.activationState != UISceneActivationStateForegroundInactive) return;
     if (!gOverlays) gOverlays = [NSMapTable weakToStrongObjectsMapTable];
-    // Already installed for this scene: leave it as the user left it (closed stays closed until the
-    // two-finger long-press brings it back).
-    if ([gOverlays objectForKey:scene]) return;
-
-    GBOverlay *w = [[GBOverlay alloc] initWithWindowScene:scene];
-    w.frame = scene.coordinateSpace.bounds;
-    w.windowLevel = UIWindowLevelAlert + 5;
-    w.backgroundColor = UIColor.clearColor;
-    w.rootViewController = [GBOverlayController new];
-    [gOverlays setObject:w forKey:scene];
-    [w present];
-    NSLog(@"[Heavenzy] SMS panel installed (scene state %ld)", (long)scene.activationState);
-}
-
-+ (void)toggle {
-    for (UIWindowScene *s in [[gOverlays keyEnumerator] allObjects]) {
-        GBOverlay *w = [gOverlays objectForKey:s];
-        if (w.hidden) [w present]; else w.hidden = YES;
+    GBOverlay *w = [gOverlays objectForKey:scene];
+    if (!w) {
+        w = [[GBOverlay alloc] initWithWindowScene:scene];
+        w.frame = scene.coordinateSpace.bounds;
+        w.windowLevel = UIWindowLevelAlert + 5;
+        w.backgroundColor = UIColor.clearColor;
+        w.rootViewController = [GBOverlayController new];
+        [gOverlays setObject:w forKey:scene];
+        NSLog(@"[Heavenzy] SMS panel created");
     }
+    [w present];
 }
 
 // Show without permanently stealing key focus (so the app keeps its keyboard). Force an initial

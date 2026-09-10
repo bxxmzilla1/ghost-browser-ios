@@ -5,10 +5,8 @@
 /// usable while the panel floats on top. It appears near the bottom and is dismissed with its X.
 @interface GBOverlay : UIWindow
 
-/// Create (once per scene) and show the panel.
-+ (void)installInScene:(UIWindowScene *)scene;
-
-/// Show the panel if it was closed (used by the two-finger long-press fallback).
-+ (void)toggle;
+/// Show the panel for this scene (creating it on first use). Called from the two-finger long-press;
+/// the panel is never shown automatically. If it is already visible this is a no-op.
++ (void)showInScene:(UIWindowScene *)scene;
 
 @end

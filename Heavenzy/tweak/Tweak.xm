@@ -161,10 +161,11 @@ static int gEnabled = 0;
     dispatch_once(&once, ^{ t = [GBGestureTarget new]; });
     return t;
 }
-// Brings the SMS panel back after it was closed with its X.
+// Two-finger long-press is the only way the SMS panel appears; its X closes it again.
 - (void)handle:(UILongPressGestureRecognizer *)g {
     if (g.state != UIGestureRecognizerStateBegan) return;
-    [GBOverlay toggle];
+    UIWindowScene *scene = g.view.window.windowScene ?: ((UIWindow *)g.view).windowScene;
+    [GBOverlay showInScene:scene];
 }
 @end
 
@@ -180,8 +181,6 @@ static void GBInstallGesture(void) {
     }
     if (!key) key = anyWindow;
     if (!key) return;
-    // Persistent draggable SMS panel (bottom of the screen, touches outside it pass through).
-    [GBOverlay installInScene:key.windowScene];
     // Avoid stacking recognizers if the window becomes active repeatedly.
     for (UIGestureRecognizer *r in key.gestureRecognizers) {
         if ([r.name isEqualToString:@"HeavenzyMenu"]) return;
@@ -230,8 +229,8 @@ static void GBInstallGesture(void) {
         // reporter (the EXC_GUARD launch crash on Instagram/Facebook).
         %init;
 
-        // The SMS panel is available in every app (even when spoofing is off). Re-assert on every
-        // activation (the panel itself is only created once per scene)…
+        // The two-finger long-press (opens the SMS panel) is armed in every app, even when spoofing
+        // is off. Re-arm on every activation…
         [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidBecomeActiveNotification
                                                           object:nil queue:[NSOperationQueue mainQueue]
                                                       usingBlock:^(NSNotification *note) {

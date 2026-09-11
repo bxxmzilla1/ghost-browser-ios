@@ -36,7 +36,7 @@ static UILabel *GBLabel(NSString *t, CGFloat size, UIFontWeight w, UIColor *c) {
 @property (nonatomic, assign) NSInteger pollTicks;
 
 @property (nonatomic, strong) UIButton *scanButton;
-@property (nonatomic, strong) UIButton *copyUsernamesButton;
+@property (nonatomic, strong) UIButton *exportButton;
 @property (nonatomic, strong) UILabel *scanHintLabel;
 @property (nonatomic, strong) UITextView *usernamesView;
 @property (nonatomic, strong) NSMutableOrderedSet<NSString *> *collectedUsernames;
@@ -130,13 +130,13 @@ static BOOL GBIsInstagramBundle(void) {
     self.usernamesView.hidden = YES;
     [self.usernamesView.heightAnchor constraintEqualToConstant:120].active = YES;
 
-    self.copyUsernamesButton = [self wideButton:@"Copy all usernames" bg:GBFieldBG() fg:GBAccent()];
-    [self.copyUsernamesButton addTarget:self action:@selector(copyUsernames) forControlEvents:UIControlEventTouchUpInside];
-    self.copyUsernamesButton.hidden = YES;
+    self.exportButton = [self wideButton:@"Copy all usernames" bg:GBFieldBG() fg:GBAccent()];
+    [self.exportButton addTarget:self action:@selector(copyUsernames) forControlEvents:UIControlEventTouchUpInside];
+    self.exportButton.hidden = YES;
 
     UIStackView *body = [[UIStackView alloc] initWithArrangedSubviews:@[
         header, self.serviceLabel, self.getButton, self.phoneLabel, self.codeLabel, self.statusLabel, self.againButton,
-        self.scanButton, self.scanHintLabel, self.usernamesView, self.copyUsernamesButton ]];
+        self.scanButton, self.scanHintLabel, self.usernamesView, self.exportButton ]];
     body.axis = UILayoutConstraintAxisVertical; body.spacing = 8;
     body.translatesAutoresizingMaskIntoConstraints = NO;
     [self.card addSubview:body];
@@ -169,7 +169,7 @@ static BOOL GBIsInstagramBundle(void) {
     if (!ig) {
         self.scanHintLabel.hidden = YES;
         self.usernamesView.hidden = YES;
-        self.copyUsernamesButton.hidden = YES;
+        self.exportButton.hidden = YES;
     }
 }
 
@@ -254,7 +254,7 @@ static BOOL GBIsInstagramBundle(void) {
         if (s.collectedUsernames.count) {
             s.scanHintLabel.hidden = NO;
             s.usernamesView.hidden = NO;
-            s.copyUsernamesButton.hidden = NO;
+            s.exportButton.hidden = NO;
             NSMutableString *lines = [NSMutableString new];
             for (NSString *u in s.collectedUsernames) [lines appendFormat:@"@%@\n", u];
             s.usernamesView.text = lines;

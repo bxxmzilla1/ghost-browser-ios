@@ -75,6 +75,7 @@ static NSString *GBPrefsPath(void) {
     _grizzlyMaxPrice = [d[@"grizzlyMaxPrice"] copy];
     _panelMode       = [d[@"panelMode"] isEqualToString:@"scraper"] ? @"scraper" : @"sms";
     _approvedNames   = [d[@"approvedNames"] copy];
+    _autoScan        = [d[@"autoScan"] boolValue];
 }
 
 // SMS settings normally arrive via the control app writing our container plist; if they're not
@@ -85,6 +86,7 @@ static NSString *GBPrefsPath(void) {
     NSDictionary *onDisk = [NSDictionary dictionaryWithContentsOfFile:GBPrefsPath()];
     if (![onDisk objectForKey:@"panelMode"])     _panelMode     = [[HZConfig panelMode] copy];
     if (![onDisk objectForKey:@"approvedNames"]) _approvedNames = [[HZConfig approvedNames] copy];
+    if (![onDisk objectForKey:@"autoScan"])      _autoScan      = [HZConfig autoScan];
     if (_diddyKey.length || _grizzlyKey.length) return;
     NSString *dk = [HZConfig diddyKey], *gk = [HZConfig grizzlyKey];
     if (dk.length || gk.length) {
@@ -163,6 +165,7 @@ static NSString *GBPrefsPath(void) {
     if (_grizzlyMaxPrice) d[@"grizzlyMaxPrice"] = _grizzlyMaxPrice;
     if (_panelMode)       d[@"panelMode"]       = _panelMode;
     if (_approvedNames.length) d[@"approvedNames"] = _approvedNames;
+    d[@"autoScan"] = @(_autoScan);
     NSString *path = GBPrefsPath();
     [[NSFileManager defaultManager] createDirectoryAtPath:[path stringByDeletingLastPathComponent]
                               withIntermediateDirectories:YES attributes:nil error:nil];

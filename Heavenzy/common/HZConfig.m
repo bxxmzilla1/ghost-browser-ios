@@ -112,4 +112,7 @@
 + (NSString *)approvedNames { return [self smsField:@"approvedNames"]; }
 + (void)setApprovedNames:(NSString *)names { [self setSmsField:@"approvedNames" value:names ?: @""]; }
 
++ (BOOL)autoScan { return [[self smsField:@"autoScan"] isEqualToString:@"1"]; }
++ (void)setAutoScan:(BOOL)on { [self setSmsField:@"autoScan" value:on ? @"1" : @"0"]; }
+
 @end

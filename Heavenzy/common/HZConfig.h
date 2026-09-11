@@ -53,4 +53,8 @@
 + (NSString *)approvedNames;
 + (void)setApprovedNames:(NSString *)names;
 
+/// Auto-scan: when on, the scraper panel taps Scan once a second so the user only has to scroll.
++ (BOOL)autoScan;
++ (void)setAutoScan:(BOOL)on;
+
 @end

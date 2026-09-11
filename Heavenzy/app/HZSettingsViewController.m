@@ -3,7 +3,7 @@
 #import "HZConfig.h"
 #import "HZContainerSync.h"
 
-typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionNames, HZSectionProvider, HZSectionDiddy, HZSectionGrizzly, HZSectionCount };
+typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionAuto, HZSectionNames, HZSectionProvider, HZSectionDiddy, HZSectionGrizzly, HZSectionCount };
 
 @interface HZSettingsViewController () <UITextFieldDelegate, UITextViewDelegate>
 @property (nonatomic, strong) UITextField *diddyKeyField;
@@ -41,7 +41,7 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionNames, HZSection
     self.namesView.autocorrectionType = UITextAutocorrectionTypeNo;
     self.namesView.text = [HZConfig approvedNames] ?: @"";
     self.namesView.delegate = self;
-    self.namesView.scrollEnabled = NO;
+    self.namesView.scrollEnabled = YES;   // fixed height; scroll inside to edit a long list
 
     self.namesPlaceholder = [UILabel new];
     self.namesPlaceholder.text = @"One first name per line, e.g.\nSandy\nJanet\nErin";
@@ -101,8 +101,6 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionNames, HZSection
 - (void)textViewDidChange:(UITextView *)tv {
     self.namesPlaceholder.hidden = tv.text.length > 0;
     [HZConfig setApprovedNames:tv.text];
-    // Keep the row height in sync as lines are added/removed.
-    [UIView performWithoutAnimation:^{ [self.tableView beginUpdates]; [self.tableView endUpdates]; }];
 }
 - (void)textViewDidEndEditing:(UITextView *)tv { [HZConfig setApprovedNames:tv.text]; [self pushToApps]; }
 
@@ -119,6 +117,7 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionNames, HZSection
 - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)s {
     switch (s) {
         case HZSectionMode:     return 1;
+        case HZSectionAuto:     return 1;
         case HZSectionNames:    return 1;
         case HZSectionProvider: return 2;
         case HZSectionDiddy:    return 1;
@@ -130,6 +129,7 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionNames, HZSection
 - (NSString *)tableView:(UITableView *)tv titleForHeaderInSection:(NSInteger)s {
     switch (s) {
         case HZSectionMode:     return @"PANEL MODE";
+        case HZSectionAuto:     return @"AUTO";
         case HZSectionNames:    return @"APPROVED NAMES";
         case HZSectionProvider: return @"PROVIDER";
         case HZSectionDiddy:    return @"DIDDYSMS";
@@ -146,6 +146,9 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionNames, HZSection
                   @"tap Scan, scroll, scan again, then copy the collected handles. Switch off to go back to SMS."
                 : @"The two-finger panel shows the SMS number + code flow. Switch on to show the Instagram "
                   @"username scraper instead. An open panel updates as soon as you return to the app.";
+        case HZSectionAuto:
+            return @"Scraper only. When on, the panel taps Scan once every second — just keep scrolling the "
+                   @"followers / following list and it collects usernames as they appear. Turn off to scan by hand.";
         case HZSectionNames:
             return @"Scraper only. When set, Scan keeps just the accounts whose display-name first name "
                    @"(e.g. \"Sandy\" in \"Sandy Cimino\") is on this list. Leave empty to keep every username.";
@@ -188,6 +191,20 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionNames, HZSection
         return cell;
     }
 
+    if (ip.section == HZSectionAuto) {
+        BOOL on = [HZConfig autoScan];
+        cell.textLabel.text = @"Auto scan";
+        cell.detailTextLabel.text = on ? @"Tapping Scan every second" : @"Manual — tap Scan yourself";
+        cell.imageView.image = [UIImage systemImageNamed:@"timer"];
+        cell.imageView.tintColor = HZAccent();
+        UISwitch *sw = [UISwitch new];
+        sw.onTintColor = HZAccent();
+        sw.on = on;
+        [sw addTarget:self action:@selector(autoSwitched:) forControlEvents:UIControlEventValueChanged];
+        cell.accessoryView = sw;
+        return cell;
+    }
+
     if (ip.section == HZSectionNames) {
         for (UIView *v in @[ self.namesView, self.namesPlaceholder ]) {
             [v removeFromSuperview];
@@ -199,7 +216,7 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionNames, HZSection
             [self.namesView.bottomAnchor constraintEqualToAnchor:cell.contentView.bottomAnchor constant:-8],
             [self.namesView.leadingAnchor constraintEqualToAnchor:cell.contentView.leadingAnchor constant:12],
             [self.namesView.trailingAnchor constraintEqualToAnchor:cell.contentView.trailingAnchor constant:-12],
-            [self.namesView.heightAnchor constraintGreaterThanOrEqualToConstant:96],
+            [self.namesView.heightAnchor constraintEqualToConstant:200],
             [self.namesPlaceholder.topAnchor constraintEqualToAnchor:self.namesView.topAnchor constant:8],
             [self.namesPlaceholder.leadingAnchor constraintEqualToAnchor:self.namesView.leadingAnchor constant:5],
         ]];
@@ -246,6 +263,12 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionNames, HZSection
     [HZConfig setPanelMode:sw.on ? @"scraper" : @"sms"];
     [self pushToApps];   // mirrored into every app container right away so an open panel can pick it up
     [self.tableView reloadSections:[NSIndexSet indexSetWithIndex:HZSectionMode] withRowAnimation:UITableViewRowAnimationNone];
+}
+
+- (void)autoSwitched:(UISwitch *)sw {
+    [HZConfig setAutoScan:sw.on];
+    [self pushToApps];
+    [self.tableView reloadSections:[NSIndexSet indexSetWithIndex:HZSectionAuto] withRowAnimation:UITableViewRowAnimationNone];
 }
 
 - (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)ip {

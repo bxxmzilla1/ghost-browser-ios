@@ -49,6 +49,8 @@ static UILabel *GBLabel(NSString *t, CGFloat size, UIFontWeight w, UIColor *c) {
 @property (nonatomic, strong) UITextView *usernamesView;
 @property (nonatomic, assign) BOOL listExpanded;
 @property (nonatomic, strong) NSMutableOrderedSet<NSString *> *collectedUsernames;
+@property (nonatomic, strong) NSTimer *autoTimer;
+@property (nonatomic, assign) BOOL scanInFlight;
 
 - (void)refreshServiceLine;
 - (void)applyPanelMode;
@@ -210,7 +212,7 @@ static BOOL GBIsInstagramBundle(void) {
                                                  name:UIApplicationDidBecomeActiveNotification object:nil];
 }
 
-- (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; }
+- (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; [self.autoTimer invalidate]; }
 
 - (void)appBecameActive {
     if (self.view.window.hidden) return;
@@ -229,16 +231,37 @@ static BOOL GBIsInstagramBundle(void) {
     self.appliedMode = mode;
     self.smsStack.hidden = scraper;
     self.scraperStack.hidden = !scraper;
-    self.titleLabel.text = scraper ? @"Heavenzy · Usernames" : @"Heavenzy · SMS";
+    self.titleLabel.text = scraper ? @"Kairos" : @"Heavenzy · SMS";
     if (scraper) {
         BOOL ig = [self isInstagramHost];
-        self.scanButton.enabled = ig;
+        self.scanButton.enabled = ig && !self.scanInFlight;
         self.scanButton.alpha = ig ? 1 : 0.5;
         if (!ig && !self.collectedUsernames.count)
             self.scanHintLabel.text = @"The username scraper works inside Instagram.";
         [self refreshUsernameList];
     }
+    [self updateAutoScan];
     if (changed && self.positioned) [self relayoutCard];
+}
+
+// Start/stop the once-a-second auto scanner based on the current mode + setting + visibility.
+- (void)updateAutoScan {
+    BOOL want = [self.appliedMode isEqualToString:@"scraper"] && [GBStore shared].autoScan
+                && [self isInstagramHost] && self.view.window && !self.view.window.hidden;
+    if (want && !self.autoTimer) {
+        self.autoTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(NSTimer *t) {
+            [self autoTick];
+        }];
+        [self autoTick];   // fire immediately so the first second isn't wasted
+    } else if (!want && self.autoTimer) {
+        [self.autoTimer invalidate]; self.autoTimer = nil;
+    }
+}
+
+- (void)autoTick {
+    if (self.scanInFlight) return;          // don't stack scans
+    if (self.view.window.hidden) { [self updateAutoScan]; return; }
+    [self scanTapped];
 }
 
 - (void)refreshUsernameList {
@@ -335,7 +358,10 @@ static BOOL GBIsInstagramBundle(void) {
 
 #pragma mark Actions
 
-- (void)closeTapped { self.view.window.hidden = YES; }
+- (void)closeTapped {
+    self.view.window.hidden = YES;
+    [self updateAutoScan];   // stop the auto timer while hidden
+}
 
 // Parse the control app's approved-names list (one per line, "#" comments) into lowercased names.
 - (NSSet<NSString *> *)approvedNameSet {
@@ -351,16 +377,18 @@ static BOOL GBIsInstagramBundle(void) {
 }
 
 - (void)scanTapped {
-    if (![self isInstagramHost]) return;
+    if (![self isInstagramHost] || self.scanInFlight) return;
     UIWindowScene *scene = self.view.window.windowScene;
     if (!scene) return;
     [[GBStore shared] reloadSmsSettings];   // pick up a fresh approved-names list from the control app
     NSSet *approved = [self approvedNameSet];
+    self.scanInFlight = YES;
     self.scanButton.enabled = NO;
     [self.scanButton setTitle:@"…" forState:UIControlStateNormal];
     __weak typeof(self) w = self;
     [GBScanner scanScene:scene excludingWindow:self.view.window approvedNames:approved completion:^(NSArray<NSString *> *usernames, NSString *method) {
         __strong typeof(w) s = w; if (!s) return;
+        s.scanInFlight = NO;
         s.scanButton.enabled = YES;
         [s.scanButton setTitle:@"Scan" forState:UIControlStateNormal];
         NSUInteger before = s.collectedUsernames.count;
@@ -510,8 +538,8 @@ static NSMapTable<UIWindowScene *, GBOverlay *> *gOverlays;
     // Pick up provider/key changes made in the Heavenzy app since launch and refresh the header line.
     [[GBStore shared] reloadSmsSettings];
     [(GBOverlayController *)self.rootViewController refreshServiceLine];
-    [(GBOverlayController *)self.rootViewController applyPanelMode];
     self.hidden = NO;
+    [(GBOverlayController *)self.rootViewController applyPanelMode];   // after unhide so auto-scan can start
     static BOOL forcedOnce = NO;
     if (!forcedOnce) {
         forcedOnce = YES;

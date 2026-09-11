@@ -50,6 +50,7 @@ static UILabel *GBLabel(NSString *t, CGFloat size, UIFontWeight w, UIColor *c) {
 @property (nonatomic, assign) BOOL listExpanded;
 @property (nonatomic, strong) NSMutableOrderedSet<NSString *> *collectedUsernames;
 @property (nonatomic, strong) NSTimer *autoTimer;
+@property (nonatomic, assign) BOOL autoRunning;   // auto loop active in this panel session (toggled by Scan)
 @property (nonatomic, assign) BOOL scanInFlight;
 
 - (void)refreshServiceLine;

@@ -1,6 +1,7 @@
 #import "GBOverlay.h"
 #import "GBSMS.h"
 #import "GBStore.h"
+#import "GBScanner.h"
 
 #pragma mark - Style
 
@@ -33,8 +34,23 @@ static UILabel *GBLabel(NSString *t, CGFloat size, UIFontWeight w, UIColor *c) {
 @property (nonatomic, copy)   NSString *orderProvider;   // provider the current order was placed with
 @property (nonatomic, strong) NSTimer *pollTimer;
 @property (nonatomic, assign) NSInteger pollTicks;
+
+@property (nonatomic, strong) UIButton *scanButton;
+@property (nonatomic, strong) UIButton *copyUsernamesButton;
+@property (nonatomic, strong) UILabel *scanHintLabel;
+@property (nonatomic, strong) UITextView *usernamesView;
+@property (nonatomic, strong) NSMutableOrderedSet<NSString *> *collectedUsernames;
+
 - (void)refreshServiceLine;
+- (BOOL)isInstagramHost;
 @end
+
+static BOOL GBIsInstagramBundle(void) {
+    NSBundle *b = [NSBundle mainBundle];
+    if ([b.bundleIdentifier.lowercaseString containsString:@"instagram"]) return YES;   // com.burbn.instagram + duplicates
+    NSString *name = b.infoDictionary[@"CFBundleDisplayName"] ?: b.infoDictionary[@"CFBundleName"];
+    return [name.lowercaseString containsString:@"instagram"];
+}
 
 @implementation GBOverlayController
 
@@ -57,7 +73,7 @@ static UILabel *GBLabel(NSString *t, CGFloat size, UIFontWeight w, UIColor *c) {
     strip.layer.cornerRadius = 2; strip.translatesAutoresizingMaskIntoConstraints = NO;
     [self.card addSubview:strip];
 
-    UILabel *title = GBLabel(@"Heavenzy SMS", 15, UIFontWeightBold, UIColor.whiteColor);
+    UILabel *title = GBLabel(@"Heavenzy", 15, UIFontWeightBold, UIColor.whiteColor);
     UIButton *close = [UIButton buttonWithType:UIButtonTypeSystem];
     [close setTitle:@"✕" forState:UIControlStateNormal];
     [close setTitleColor:GBSubtle() forState:UIControlStateNormal];
@@ -94,8 +110,33 @@ static UILabel *GBLabel(NSString *t, CGFloat size, UIFontWeight w, UIColor *c) {
     [self.againButton addTarget:self action:@selector(newTapped) forControlEvents:UIControlEventTouchUpInside];
     self.againButton.hidden = YES;
 
+    self.collectedUsernames = [NSMutableOrderedSet orderedSet];
+
+    self.scanButton = [self wideButton:@"Scan loaded usernames" bg:GBFieldBG() fg:UIColor.whiteColor];
+    [self.scanButton addTarget:self action:@selector(scanTapped) forControlEvents:UIControlEventTouchUpInside];
+
+    self.scanHintLabel = GBLabel(@"Scroll through the list, then tap Scan. Each tap adds any rows Instagram still has loaded in memory (not recycled).", 10, UIFontWeightRegular, GBSubtle());
+    self.scanHintLabel.numberOfLines = 0;
+    self.scanHintLabel.hidden = YES;
+
+    self.usernamesView = [UITextView new];
+    self.usernamesView.backgroundColor = GBFieldBG();
+    self.usernamesView.textColor = UIColor.whiteColor;
+    self.usernamesView.font = [UIFont monospacedSystemFontOfSize:11 weight:UIFontWeightRegular];
+    self.usernamesView.editable = NO;
+    self.usernamesView.selectable = YES;
+    self.usernamesView.layer.cornerRadius = 8;
+    self.usernamesView.textContainerInset = UIEdgeInsetsMake(8, 8, 8, 8);
+    self.usernamesView.hidden = YES;
+    [self.usernamesView.heightAnchor constraintEqualToConstant:120].active = YES;
+
+    self.copyUsernamesButton = [self wideButton:@"Copy all usernames" bg:GBFieldBG() fg:GBAccent()];
+    [self.copyUsernamesButton addTarget:self action:@selector(copyUsernames) forControlEvents:UIControlEventTouchUpInside];
+    self.copyUsernamesButton.hidden = YES;
+
     UIStackView *body = [[UIStackView alloc] initWithArrangedSubviews:@[
-        header, self.serviceLabel, self.getButton, self.phoneLabel, self.codeLabel, self.statusLabel, self.againButton ]];
+        header, self.serviceLabel, self.getButton, self.phoneLabel, self.codeLabel, self.statusLabel, self.againButton,
+        self.scanButton, self.scanHintLabel, self.usernamesView, self.copyUsernamesButton ]];
     body.axis = UILayoutConstraintAxisVertical; body.spacing = 8;
     body.translatesAutoresizingMaskIntoConstraints = NO;
     [self.card addSubview:body];
@@ -116,6 +157,20 @@ static UILabel *GBLabel(NSString *t, CGFloat size, UIFontWeight w, UIColor *c) {
 
     UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(pan:)];
     [self.card addGestureRecognizer:pan];
+
+    [self refreshInstagramScanSection];
+}
+
+- (BOOL)isInstagramHost { return GBIsInstagramBundle(); }
+
+- (void)refreshInstagramScanSection {
+    BOOL ig = [self isInstagramHost];
+    self.scanButton.hidden = !ig;
+    if (!ig) {
+        self.scanHintLabel.hidden = YES;
+        self.usernamesView.hidden = YES;
+        self.copyUsernamesButton.hidden = YES;
+    }
 }
 
 - (NSString *)serviceLine {
@@ -181,6 +236,53 @@ static UILabel *GBLabel(NSString *t, CGFloat size, UIFontWeight w, UIColor *c) {
 #pragma mark Actions
 
 - (void)closeTapped { self.view.window.hidden = YES; }
+
+- (void)scanTapped {
+    if (![self isInstagramHost]) return;
+    UIWindowScene *scene = self.view.window.windowScene;
+    if (!scene) return;
+    self.scanButton.enabled = NO;
+    [self.scanButton setTitle:@"Scanning…" forState:UIControlStateNormal];
+    __weak typeof(self) w = self;
+    [GBScanner scanScene:scene excludingWindow:self.view.window completion:^(NSArray<NSString *> *usernames, NSString *method) {
+        __strong typeof(w) s = w; if (!s) return;
+        s.scanButton.enabled = YES;
+        [s.scanButton setTitle:@"Scan loaded usernames" forState:UIControlStateNormal];
+        NSUInteger before = s.collectedUsernames.count;
+        for (NSString *u in usernames) [s.collectedUsernames addObject:u];
+        NSUInteger added = s.collectedUsernames.count - before;
+        if (s.collectedUsernames.count) {
+            s.scanHintLabel.hidden = NO;
+            s.usernamesView.hidden = NO;
+            s.copyUsernamesButton.hidden = NO;
+            NSMutableString *lines = [NSMutableString new];
+            for (NSString *u in s.collectedUsernames) [lines appendFormat:@"@%@\n", u];
+            s.usernamesView.text = lines;
+            NSString *via = method.length ? method : @"none";
+            s.scanHintLabel.text = [NSString stringWithFormat:@"%lu total (%lu new this tap · %@). Scroll more & scan again for additional pages.",
+                                    (unsigned long)s.collectedUsernames.count, (unsigned long)added, via];
+        } else {
+            s.scanHintLabel.hidden = NO;
+            s.scanHintLabel.text = @"No usernames found on this screen. Open a followers/following list and try again.";
+        }
+        [s relayoutCard];
+    }];
+}
+
+// The card grows when results appear; keep it fully on screen.
+- (void)relayoutCard {
+    [self.view layoutIfNeeded];
+    [self clampConstants];
+    [UIView animateWithDuration:0.15 animations:^{ [self.view layoutIfNeeded]; }];
+}
+
+- (void)copyUsernames {
+    if (!self.collectedUsernames.count) return;
+    NSMutableString *lines = [NSMutableString new];
+    for (NSString *u in self.collectedUsernames) [lines appendFormat:@"@%@\n", u];
+    UIPasteboard.generalPasteboard.string = lines;
+    [self flash:self.scanHintLabel text:@"All usernames copied."];
+}
 
 - (void)getTapped {
     [self.pollTimer invalidate]; self.pollTimer = nil;

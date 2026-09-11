@@ -74,6 +74,7 @@ static NSString *GBPrefsPath(void) {
     _grizzlyKey      = [d[@"grizzlyKey"] copy];
     _grizzlyMaxPrice = [d[@"grizzlyMaxPrice"] copy];
     _panelMode       = [d[@"panelMode"] isEqualToString:@"scraper"] ? @"scraper" : @"sms";
+    _approvedNames   = [d[@"approvedNames"] copy];
 }
 
 // SMS settings normally arrive via the control app writing our container plist; if they're not
@@ -81,8 +82,9 @@ static NSString *GBPrefsPath(void) {
 - (void)adoptCentralSmsSettingsIfMissing {
     [HZConfig grantSandboxAccess];
     if (![[HZConfig all] count]) return;   // central store unreachable (no libSandy) — keep container values
-    if (![[NSDictionary dictionaryWithContentsOfFile:GBPrefsPath()] objectForKey:@"panelMode"])
-        _panelMode = [[HZConfig panelMode] copy];
+    NSDictionary *onDisk = [NSDictionary dictionaryWithContentsOfFile:GBPrefsPath()];
+    if (![onDisk objectForKey:@"panelMode"])     _panelMode     = [[HZConfig panelMode] copy];
+    if (![onDisk objectForKey:@"approvedNames"]) _approvedNames = [[HZConfig approvedNames] copy];
     if (_diddyKey.length || _grizzlyKey.length) return;
     NSString *dk = [HZConfig diddyKey], *gk = [HZConfig grizzlyKey];
     if (dk.length || gk.length) {
@@ -160,6 +162,7 @@ static NSString *GBPrefsPath(void) {
     if (_grizzlyKey)      d[@"grizzlyKey"]      = _grizzlyKey;
     if (_grizzlyMaxPrice) d[@"grizzlyMaxPrice"] = _grizzlyMaxPrice;
     if (_panelMode)       d[@"panelMode"]       = _panelMode;
+    if (_approvedNames.length) d[@"approvedNames"] = _approvedNames;
     NSString *path = GBPrefsPath();
     [[NSFileManager defaultManager] createDirectoryAtPath:[path stringByDeletingLastPathComponent]
                               withIntermediateDirectories:YES attributes:nil error:nil];

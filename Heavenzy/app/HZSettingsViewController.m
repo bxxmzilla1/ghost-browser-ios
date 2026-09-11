@@ -3,12 +3,14 @@
 #import "HZConfig.h"
 #import "HZContainerSync.h"
 
-typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionProvider, HZSectionDiddy, HZSectionGrizzly, HZSectionCount };
+typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionNames, HZSectionProvider, HZSectionDiddy, HZSectionGrizzly, HZSectionCount };
 
-@interface HZSettingsViewController () <UITextFieldDelegate>
+@interface HZSettingsViewController () <UITextFieldDelegate, UITextViewDelegate>
 @property (nonatomic, strong) UITextField *diddyKeyField;
 @property (nonatomic, strong) UITextField *grizzlyKeyField;
 @property (nonatomic, strong) UITextField *grizzlyPriceField;
+@property (nonatomic, strong) UITextView *namesView;
+@property (nonatomic, strong) UILabel *namesPlaceholder;
 @end
 
 @implementation HZSettingsViewController
@@ -22,11 +24,31 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionProvider, HZSect
     self.view.backgroundColor = HZBG();
     HZStyleTable(self.tableView);
     self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
+    self.tableView.rowHeight = UITableViewAutomaticDimension;
+    self.tableView.estimatedRowHeight = 60;
 
     self.diddyKeyField     = [self field:@"Paste your DiddySMS API key" text:[HZConfig diddyKey] secure:YES];
     self.grizzlyKeyField   = [self field:@"Paste your GrizzlySMS API key" text:[HZConfig grizzlyKey] secure:YES];
     self.grizzlyPriceField = [self field:@"Max price per number (optional, e.g. 0.50)" text:[HZConfig grizzlyMaxPrice] secure:NO];
     self.grizzlyPriceField.keyboardType = UIKeyboardTypeDecimalPad;
+
+    self.namesView = [UITextView new];
+    self.namesView.backgroundColor = UIColor.clearColor;
+    self.namesView.textColor = UIColor.whiteColor;
+    self.namesView.tintColor = HZAccent();
+    self.namesView.font = [UIFont monospacedSystemFontOfSize:14 weight:UIFontWeightRegular];
+    self.namesView.autocapitalizationType = UITextAutocapitalizationTypeNone;
+    self.namesView.autocorrectionType = UITextAutocorrectionTypeNo;
+    self.namesView.text = [HZConfig approvedNames] ?: @"";
+    self.namesView.delegate = self;
+    self.namesView.scrollEnabled = NO;
+
+    self.namesPlaceholder = [UILabel new];
+    self.namesPlaceholder.text = @"One first name per line, e.g.\nSandy\nJanet\nErin";
+    self.namesPlaceholder.numberOfLines = 0;
+    self.namesPlaceholder.textColor = HZTextMuted();
+    self.namesPlaceholder.font = self.namesView.font;
+    self.namesPlaceholder.hidden = self.namesView.text.length > 0;
 }
 
 - (void)viewDidLayoutSubviews {
@@ -76,6 +98,14 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionProvider, HZSect
 - (BOOL)textFieldShouldReturn:(UITextField *)tf { [tf resignFirstResponder]; return YES; }
 - (void)textFieldDidEndEditing:(UITextField *)tf { [self fieldChanged:tf]; [self pushToApps]; }
 
+- (void)textViewDidChange:(UITextView *)tv {
+    self.namesPlaceholder.hidden = tv.text.length > 0;
+    [HZConfig setApprovedNames:tv.text];
+    // Keep the row height in sync as lines are added/removed.
+    [UIView performWithoutAnimation:^{ [self.tableView beginUpdates]; [self.tableView endUpdates]; }];
+}
+- (void)textViewDidEndEditing:(UITextView *)tv { [HZConfig setApprovedNames:tv.text]; [self pushToApps]; }
+
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
     [self.view endEditing:YES];
@@ -89,6 +119,7 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionProvider, HZSect
 - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)s {
     switch (s) {
         case HZSectionMode:     return 1;
+        case HZSectionNames:    return 1;
         case HZSectionProvider: return 2;
         case HZSectionDiddy:    return 1;
         case HZSectionGrizzly:  return 2;
@@ -99,6 +130,7 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionProvider, HZSect
 - (NSString *)tableView:(UITableView *)tv titleForHeaderInSection:(NSInteger)s {
     switch (s) {
         case HZSectionMode:     return @"PANEL MODE";
+        case HZSectionNames:    return @"APPROVED NAMES";
         case HZSectionProvider: return @"PROVIDER";
         case HZSectionDiddy:    return @"DIDDYSMS";
         case HZSectionGrizzly:  return @"GRIZZLYSMS";
@@ -114,6 +146,9 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionProvider, HZSect
                   @"tap Scan, scroll, scan again, then copy the collected handles. Switch off to go back to SMS."
                 : @"The two-finger panel shows the SMS number + code flow. Switch on to show the Instagram "
                   @"username scraper instead. An open panel updates as soon as you return to the app.";
+        case HZSectionNames:
+            return @"Scraper only. When set, Scan keeps just the accounts whose display-name first name "
+                   @"(e.g. \"Sandy\" in \"Sandy Cimino\") is on this list. Leave empty to keep every username.";
         case HZSectionProvider:
             return @"The service is detected from the app's name (Instagram → instagram / ig) and the country "
                    @"is always USA.";
@@ -150,6 +185,24 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionProvider, HZSect
         sw.on = scraper;
         [sw addTarget:self action:@selector(modeSwitched:) forControlEvents:UIControlEventValueChanged];
         cell.accessoryView = sw;
+        return cell;
+    }
+
+    if (ip.section == HZSectionNames) {
+        for (UIView *v in @[ self.namesView, self.namesPlaceholder ]) {
+            [v removeFromSuperview];
+            v.translatesAutoresizingMaskIntoConstraints = NO;
+            [cell.contentView addSubview:v];
+        }
+        [NSLayoutConstraint activateConstraints:@[
+            [self.namesView.topAnchor constraintEqualToAnchor:cell.contentView.topAnchor constant:8],
+            [self.namesView.bottomAnchor constraintEqualToAnchor:cell.contentView.bottomAnchor constant:-8],
+            [self.namesView.leadingAnchor constraintEqualToAnchor:cell.contentView.leadingAnchor constant:12],
+            [self.namesView.trailingAnchor constraintEqualToAnchor:cell.contentView.trailingAnchor constant:-12],
+            [self.namesView.heightAnchor constraintGreaterThanOrEqualToConstant:96],
+            [self.namesPlaceholder.topAnchor constraintEqualToAnchor:self.namesView.topAnchor constant:8],
+            [self.namesPlaceholder.leadingAnchor constraintEqualToAnchor:self.namesView.leadingAnchor constant:5],
+        ]];
         return cell;
     }
 

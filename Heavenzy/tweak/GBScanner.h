@@ -17,8 +17,12 @@
 /// Scans every window in `scene` except `excluded` (our own overlay). Completion runs on the main
 /// queue with usernames ordered top-to-bottom as they appear on screen, and `method` set to
 /// "hierarchy" or "ocr" (or nil when nothing was found).
+///
+/// When `approvedNames` is non-empty, only accounts whose display-name first name (or whole display
+/// name), lowercased, is in the set are returned — the rest are dropped. Pass nil/empty for no filter.
 + (void)scanScene:(UIWindowScene *)scene
    excludingWindow:(UIWindow *)excluded
+     approvedNames:(NSSet<NSString *> *)approvedNames
         completion:(void (^)(NSArray<NSString *> *usernames, NSString *method))completion;
 
 @end

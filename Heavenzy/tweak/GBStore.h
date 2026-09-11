@@ -56,6 +56,7 @@
 @property (nonatomic, copy) NSString *grizzlyKey;
 @property (nonatomic, copy) NSString *grizzlyMaxPrice;
 @property (nonatomic, copy) NSString *panelMode;        // "sms" | "scraper" — what the panel shows
+@property (nonatomic, copy) NSString *approvedNames;    // scraper first-name filter (raw, one per line)
 
 /// Re-read only the SMS/panel settings from disk (the control app updates them while we run).
 - (void)reloadSmsSettings;

@@ -44,7 +44,8 @@ static UILabel *GBLabel(NSString *t, CGFloat size, UIFontWeight w, UIColor *c) {
 @property (nonatomic, strong) UIButton *exportButton;
 @property (nonatomic, strong) UIButton *clearButton;
 @property (nonatomic, strong) UILabel *scanHintLabel;
-@property (nonatomic, strong) UIButton *listToggle;          // "N usernames  ▾" — expands/collapses the list
+@property (nonatomic, strong) UIButton *listToggle;          // "N usernames" row — expands/collapses the list
+@property (nonatomic, strong) UIImageView *listChevron;     // chevron pinned to the right of listToggle
 @property (nonatomic, strong) UITextView *usernamesView;
 @property (nonatomic, assign) BOOL listExpanded;
 @property (nonatomic, strong) NSMutableOrderedSet<NSString *> *collectedUsernames;
@@ -127,27 +128,33 @@ static BOOL GBIsInstagramBundle(void) {
     // --- Username scraper mode ---
     self.collectedUsernames = [NSMutableOrderedSet orderedSet];
 
-    self.scanButton = [self wideButton:@"Scan usernames" bg:GBAccent() fg:UIColor.whiteColor];
-    [self.scanButton addTarget:self action:@selector(scanTapped) forControlEvents:UIControlEventTouchUpInside];
-
     self.scanHintLabel = GBLabel(@"Open a followers / following list, tap Scan, scroll, scan again.", 11, UIFontWeightRegular, GBSubtle());
     self.scanHintLabel.numberOfLines = 0;
     self.scanHintLabel.textAlignment = NSTextAlignmentCenter;
 
-    // Collapsible list: a one-line summary row that toggles the text view under it.
+    // Collapsible list: a one-line summary row (label left, chevron pinned right) toggling the list.
     self.listToggle = [UIButton buttonWithType:UIButtonTypeSystem];
-    self.listToggle.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
     self.listToggle.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightSemibold];
     [self.listToggle setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-    self.listToggle.tintColor = GBSubtle();
+    self.listToggle.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
+    self.listToggle.contentEdgeInsets = UIEdgeInsetsMake(0, 12, 0, 34);   // leave room for the chevron
     self.listToggle.backgroundColor = GBFieldBG();
     self.listToggle.layer.cornerRadius = 10;
-    self.listToggle.contentEdgeInsets = UIEdgeInsetsMake(0, 12, 0, 12);
-    self.listToggle.semanticContentAttribute = UISemanticContentAttributeForceRightToLeft;   // chevron on the right
-    self.listToggle.imageEdgeInsets = UIEdgeInsetsMake(0, -6, 0, 6);
     [self.listToggle addTarget:self action:@selector(toggleList) forControlEvents:UIControlEventTouchUpInside];
     [self.listToggle.heightAnchor constraintEqualToConstant:36].active = YES;
     self.listToggle.hidden = YES;
+
+    self.listChevron = [[UIImageView alloc] init];
+    self.listChevron.tintColor = GBSubtle();
+    self.listChevron.contentMode = UIViewContentModeScaleAspectFit;
+    self.listChevron.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.listToggle addSubview:self.listChevron];
+    [NSLayoutConstraint activateConstraints:@[
+        [self.listChevron.trailingAnchor constraintEqualToAnchor:self.listToggle.trailingAnchor constant:-14],
+        [self.listChevron.centerYAnchor constraintEqualToAnchor:self.listToggle.centerYAnchor],
+        [self.listChevron.widthAnchor constraintEqualToConstant:14],
+        [self.listChevron.heightAnchor constraintEqualToConstant:14],
+    ]];
 
     self.usernamesView = [UITextView new];
     self.usernamesView.backgroundColor = GBFieldBG();
@@ -160,17 +167,18 @@ static BOOL GBIsInstagramBundle(void) {
     self.usernamesView.hidden = YES;
     [self.usernamesView.heightAnchor constraintEqualToConstant:140].active = YES;
 
-    self.exportButton = [self wideButton:@"Copy all" bg:GBFieldBG() fg:GBAccent()];
+    // Copy · Clear · Scan on one row, Scan pinned to the right and always the primary action.
+    self.exportButton = [self wideButton:@"Copy" bg:GBFieldBG() fg:GBAccent()];
     [self.exportButton addTarget:self action:@selector(copyUsernames) forControlEvents:UIControlEventTouchUpInside];
     self.clearButton = [self wideButton:@"Clear" bg:GBFieldBG() fg:GBSubtle()];
     [self.clearButton addTarget:self action:@selector(clearUsernames) forControlEvents:UIControlEventTouchUpInside];
-    UIStackView *actions = [[UIStackView alloc] initWithArrangedSubviews:@[ self.exportButton, self.clearButton ]];
+    self.scanButton = [self wideButton:@"Scan" bg:GBAccent() fg:UIColor.whiteColor];
+    [self.scanButton addTarget:self action:@selector(scanTapped) forControlEvents:UIControlEventTouchUpInside];
+    UIStackView *actions = [[UIStackView alloc] initWithArrangedSubviews:@[ self.exportButton, self.clearButton, self.scanButton ]];
     actions.axis = UILayoutConstraintAxisHorizontal; actions.spacing = 8; actions.distribution = UIStackViewDistributionFillEqually;
-    actions.hidden = YES;
-    actions.tag = 77;   // looked up via -actionsRow
 
     self.scraperStack = [[UIStackView alloc] initWithArrangedSubviews:@[
-        self.scanButton, self.scanHintLabel, self.listToggle, self.usernamesView, actions ]];
+        self.scanHintLabel, self.listToggle, self.usernamesView, actions ]];
     self.scraperStack.axis = UILayoutConstraintAxisVertical; self.scraperStack.spacing = 8;
     self.scraperStack.hidden = YES;
 
@@ -228,27 +236,23 @@ static BOOL GBIsInstagramBundle(void) {
         self.scanButton.alpha = ig ? 1 : 0.5;
         if (!ig && !self.collectedUsernames.count)
             self.scanHintLabel.text = @"The username scraper works inside Instagram.";
+        [self refreshUsernameList];
     }
     if (changed && self.positioned) [self relayoutCard];
-}
-
-- (UIStackView *)actionsRow {
-    for (UIView *v in self.scraperStack.arrangedSubviews) if (v.tag == 77) return (UIStackView *)v;
-    return nil;
 }
 
 - (void)refreshUsernameList {
     NSUInteger n = self.collectedUsernames.count;
     BOOL any = n > 0;
     self.listToggle.hidden = !any;
-    [self actionsRow].hidden = !any;
     self.usernamesView.hidden = !(any && self.listExpanded);
+    self.exportButton.enabled = any; self.exportButton.alpha = any ? 1 : 0.5;
+    self.clearButton.enabled  = any; self.clearButton.alpha  = any ? 1 : 0.5;
     if (any) {
         NSString *title = [NSString stringWithFormat:@"%lu username%@", (unsigned long)n, n == 1 ? @"" : @"s"];
         [self.listToggle setTitle:title forState:UIControlStateNormal];
-        UIImageSymbolConfiguration *c = [UIImageSymbolConfiguration configurationWithPointSize:12 weight:UIImageSymbolWeightBold];
-        [self.listToggle setImage:[UIImage systemImageNamed:self.listExpanded ? @"chevron.up" : @"chevron.down" withConfiguration:c]
-                         forState:UIControlStateNormal];
+        UIImageSymbolConfiguration *c = [UIImageSymbolConfiguration configurationWithPointSize:13 weight:UIImageSymbolWeightBold];
+        self.listChevron.image = [UIImage systemImageNamed:self.listExpanded ? @"chevron.up" : @"chevron.down" withConfiguration:c];
         NSMutableString *lines = [NSMutableString new];
         for (NSString *u in self.collectedUsernames) [lines appendFormat:@"@%@\n", u];
         self.usernamesView.text = lines;
@@ -333,23 +337,41 @@ static BOOL GBIsInstagramBundle(void) {
 
 - (void)closeTapped { self.view.window.hidden = YES; }
 
+// Parse the control app's approved-names list (one per line, "#" comments) into lowercased names.
+- (NSSet<NSString *> *)approvedNameSet {
+    NSString *raw = [GBStore shared].approvedNames;
+    if (!raw.length) return nil;
+    NSMutableSet *set = [NSMutableSet set];
+    for (NSString *line in [raw componentsSeparatedByCharactersInSet:NSCharacterSet.newlineCharacterSet]) {
+        NSString *t = [line stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
+        if (!t.length || [t hasPrefix:@"#"]) continue;
+        [set addObject:t.lowercaseString];
+    }
+    return set.count ? set : nil;
+}
+
 - (void)scanTapped {
     if (![self isInstagramHost]) return;
     UIWindowScene *scene = self.view.window.windowScene;
     if (!scene) return;
+    [[GBStore shared] reloadSmsSettings];   // pick up a fresh approved-names list from the control app
+    NSSet *approved = [self approvedNameSet];
     self.scanButton.enabled = NO;
-    [self.scanButton setTitle:@"Scanning…" forState:UIControlStateNormal];
+    [self.scanButton setTitle:@"…" forState:UIControlStateNormal];
     __weak typeof(self) w = self;
-    [GBScanner scanScene:scene excludingWindow:self.view.window completion:^(NSArray<NSString *> *usernames, NSString *method) {
+    [GBScanner scanScene:scene excludingWindow:self.view.window approvedNames:approved completion:^(NSArray<NSString *> *usernames, NSString *method) {
         __strong typeof(w) s = w; if (!s) return;
         s.scanButton.enabled = YES;
-        [s.scanButton setTitle:@"Scan usernames" forState:UIControlStateNormal];
+        [s.scanButton setTitle:@"Scan" forState:UIControlStateNormal];
         NSUInteger before = s.collectedUsernames.count;
         for (NSString *u in usernames) [s.collectedUsernames addObject:u];
         NSUInteger added = s.collectedUsernames.count - before;
+        NSString *filterNote = approved.count ? [NSString stringWithFormat:@" · %lu-name filter", (unsigned long)approved.count] : @"";
         if (usernames.count) {
-            s.scanHintLabel.text = [NSString stringWithFormat:@"+%lu new%@ · scroll and scan again for more.",
-                                    (unsigned long)added, [method isEqualToString:@"ocr"] ? @" (OCR)" : @""];
+            s.scanHintLabel.text = [NSString stringWithFormat:@"+%lu new%@%@ · scroll and scan again for more.",
+                                    (unsigned long)added, [method isEqualToString:@"ocr"] ? @" (OCR)" : @"", filterNote];
+        } else if (approved.count) {
+            s.scanHintLabel.text = @"No visible accounts matched your names list — scroll and scan again.";
         } else {
             s.scanHintLabel.text = @"Nothing found here — open a followers / following list and try again.";
         }

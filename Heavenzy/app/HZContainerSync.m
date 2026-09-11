@@ -34,6 +34,8 @@
              *gk = [HZConfig grizzlyKey], *mp = [HZConfig grizzlyMaxPrice];
     d[@"smsProvider"] = provider.length ? provider : @"diddy";
     d[@"panelMode"]   = [HZConfig panelMode];
+    NSString *approved = [HZConfig approvedNames];
+    if (approved.length) d[@"approvedNames"] = approved; else [d removeObjectForKey:@"approvedNames"];
     if (dk.length) d[@"diddyKey"]        = dk; else [d removeObjectForKey:@"diddyKey"];
     if (gk.length) d[@"grizzlyKey"]      = gk; else [d removeObjectForKey:@"grizzlyKey"];
     if (mp.length) d[@"grizzlyMaxPrice"] = mp; else [d removeObjectForKey:@"grizzlyMaxPrice"];

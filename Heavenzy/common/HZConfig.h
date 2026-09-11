@@ -49,4 +49,8 @@
 + (NSString *)panelMode;
 + (void)setPanelMode:(NSString *)mode;
 
+/// Approved first-names list for the scraper, as the user typed it (one name per line). Empty = no filter.
++ (NSString *)approvedNames;
++ (void)setApprovedNames:(NSString *)names;
+
 @end

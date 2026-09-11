@@ -109,4 +109,7 @@
 + (NSString *)panelMode { NSString *m = [self smsField:@"panelMode"]; return [m isEqualToString:@"scraper"] ? @"scraper" : @"sms"; }
 + (void)setPanelMode:(NSString *)mode { [self setSmsField:@"panelMode" value:[mode isEqualToString:@"scraper"] ? @"scraper" : @"sms"]; }
 
++ (NSString *)approvedNames { return [self smsField:@"approvedNames"]; }
++ (void)setApprovedNames:(NSString *)names { [self setSmsField:@"approvedNames" value:names ?: @""]; }
+
 @end

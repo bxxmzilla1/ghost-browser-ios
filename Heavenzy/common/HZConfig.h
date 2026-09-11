@@ -45,4 +45,8 @@
 + (NSString *)grizzlyMaxPrice;
 + (void)setGrizzlyMaxPrice:(NSString *)price;
 
+/// What the in-app panel shows: "sms" (number + code) or "scraper" (Instagram username scanner).
++ (NSString *)panelMode;
++ (void)setPanelMode:(NSString *)mode;
+
 @end

@@ -33,6 +33,7 @@
     NSString *provider = [HZConfig smsProvider], *dk = [HZConfig diddyKey],
              *gk = [HZConfig grizzlyKey], *mp = [HZConfig grizzlyMaxPrice];
     d[@"smsProvider"] = provider.length ? provider : @"diddy";
+    d[@"panelMode"]   = [HZConfig panelMode];
     if (dk.length) d[@"diddyKey"]        = dk; else [d removeObjectForKey:@"diddyKey"];
     if (gk.length) d[@"grizzlyKey"]      = gk; else [d removeObjectForKey:@"grizzlyKey"];
     if (mp.length) d[@"grizzlyMaxPrice"] = mp; else [d removeObjectForKey:@"grizzlyMaxPrice"];

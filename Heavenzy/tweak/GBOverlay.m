@@ -35,13 +35,22 @@ static UILabel *GBLabel(NSString *t, CGFloat size, UIFontWeight w, UIColor *c) {
 @property (nonatomic, strong) NSTimer *pollTimer;
 @property (nonatomic, assign) NSInteger pollTicks;
 
+@property (nonatomic, strong) UILabel *titleLabel;
+@property (nonatomic, strong) UIStackView *smsStack;
+@property (nonatomic, strong) UIStackView *scraperStack;
+@property (nonatomic, copy)   NSString *appliedMode;
+
 @property (nonatomic, strong) UIButton *scanButton;
 @property (nonatomic, strong) UIButton *exportButton;
+@property (nonatomic, strong) UIButton *clearButton;
 @property (nonatomic, strong) UILabel *scanHintLabel;
+@property (nonatomic, strong) UIButton *listToggle;          // "N usernames  ▾" — expands/collapses the list
 @property (nonatomic, strong) UITextView *usernamesView;
+@property (nonatomic, assign) BOOL listExpanded;
 @property (nonatomic, strong) NSMutableOrderedSet<NSString *> *collectedUsernames;
 
 - (void)refreshServiceLine;
+- (void)applyPanelMode;
 - (BOOL)isInstagramHost;
 @end
 
@@ -74,6 +83,7 @@ static BOOL GBIsInstagramBundle(void) {
     [self.card addSubview:strip];
 
     UILabel *title = GBLabel(@"Heavenzy", 15, UIFontWeightBold, UIColor.whiteColor);
+    self.titleLabel = title;
     UIButton *close = [UIButton buttonWithType:UIButtonTypeSystem];
     [close setTitle:@"✕" forState:UIControlStateNormal];
     [close setTitleColor:GBSubtle() forState:UIControlStateNormal];
@@ -110,14 +120,34 @@ static BOOL GBIsInstagramBundle(void) {
     [self.againButton addTarget:self action:@selector(newTapped) forControlEvents:UIControlEventTouchUpInside];
     self.againButton.hidden = YES;
 
+    self.smsStack = [[UIStackView alloc] initWithArrangedSubviews:@[
+        self.serviceLabel, self.getButton, self.phoneLabel, self.codeLabel, self.statusLabel, self.againButton ]];
+    self.smsStack.axis = UILayoutConstraintAxisVertical; self.smsStack.spacing = 8;
+
+    // --- Username scraper mode ---
     self.collectedUsernames = [NSMutableOrderedSet orderedSet];
 
-    self.scanButton = [self wideButton:@"Scan loaded usernames" bg:GBFieldBG() fg:UIColor.whiteColor];
+    self.scanButton = [self wideButton:@"Scan usernames" bg:GBAccent() fg:UIColor.whiteColor];
     [self.scanButton addTarget:self action:@selector(scanTapped) forControlEvents:UIControlEventTouchUpInside];
 
-    self.scanHintLabel = GBLabel(@"Scroll through the list, then tap Scan. Each tap adds any rows Instagram still has loaded in memory (not recycled).", 10, UIFontWeightRegular, GBSubtle());
+    self.scanHintLabel = GBLabel(@"Open a followers / following list, tap Scan, scroll, scan again.", 11, UIFontWeightRegular, GBSubtle());
     self.scanHintLabel.numberOfLines = 0;
-    self.scanHintLabel.hidden = YES;
+    self.scanHintLabel.textAlignment = NSTextAlignmentCenter;
+
+    // Collapsible list: a one-line summary row that toggles the text view under it.
+    self.listToggle = [UIButton buttonWithType:UIButtonTypeSystem];
+    self.listToggle.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
+    self.listToggle.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightSemibold];
+    [self.listToggle setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    self.listToggle.tintColor = GBSubtle();
+    self.listToggle.backgroundColor = GBFieldBG();
+    self.listToggle.layer.cornerRadius = 10;
+    self.listToggle.contentEdgeInsets = UIEdgeInsetsMake(0, 12, 0, 12);
+    self.listToggle.semanticContentAttribute = UISemanticContentAttributeForceRightToLeft;   // chevron on the right
+    self.listToggle.imageEdgeInsets = UIEdgeInsetsMake(0, -6, 0, 6);
+    [self.listToggle addTarget:self action:@selector(toggleList) forControlEvents:UIControlEventTouchUpInside];
+    [self.listToggle.heightAnchor constraintEqualToConstant:36].active = YES;
+    self.listToggle.hidden = YES;
 
     self.usernamesView = [UITextView new];
     self.usernamesView.backgroundColor = GBFieldBG();
@@ -128,15 +158,23 @@ static BOOL GBIsInstagramBundle(void) {
     self.usernamesView.layer.cornerRadius = 8;
     self.usernamesView.textContainerInset = UIEdgeInsetsMake(8, 8, 8, 8);
     self.usernamesView.hidden = YES;
-    [self.usernamesView.heightAnchor constraintEqualToConstant:120].active = YES;
+    [self.usernamesView.heightAnchor constraintEqualToConstant:140].active = YES;
 
-    self.exportButton = [self wideButton:@"Copy all usernames" bg:GBFieldBG() fg:GBAccent()];
+    self.exportButton = [self wideButton:@"Copy all" bg:GBFieldBG() fg:GBAccent()];
     [self.exportButton addTarget:self action:@selector(copyUsernames) forControlEvents:UIControlEventTouchUpInside];
-    self.exportButton.hidden = YES;
+    self.clearButton = [self wideButton:@"Clear" bg:GBFieldBG() fg:GBSubtle()];
+    [self.clearButton addTarget:self action:@selector(clearUsernames) forControlEvents:UIControlEventTouchUpInside];
+    UIStackView *actions = [[UIStackView alloc] initWithArrangedSubviews:@[ self.exportButton, self.clearButton ]];
+    actions.axis = UILayoutConstraintAxisHorizontal; actions.spacing = 8; actions.distribution = UIStackViewDistributionFillEqually;
+    actions.hidden = YES;
+    actions.tag = 77;   // looked up via -actionsRow
 
-    UIStackView *body = [[UIStackView alloc] initWithArrangedSubviews:@[
-        header, self.serviceLabel, self.getButton, self.phoneLabel, self.codeLabel, self.statusLabel, self.againButton,
-        self.scanButton, self.scanHintLabel, self.usernamesView, self.exportButton ]];
+    self.scraperStack = [[UIStackView alloc] initWithArrangedSubviews:@[
+        self.scanButton, self.scanHintLabel, self.listToggle, self.usernamesView, actions ]];
+    self.scraperStack.axis = UILayoutConstraintAxisVertical; self.scraperStack.spacing = 8;
+    self.scraperStack.hidden = YES;
+
+    UIStackView *body = [[UIStackView alloc] initWithArrangedSubviews:@[ header, self.smsStack, self.scraperStack ]];
     body.axis = UILayoutConstraintAxisVertical; body.spacing = 8;
     body.translatesAutoresizingMaskIntoConstraints = NO;
     [self.card addSubview:body];
@@ -158,19 +196,77 @@ static BOOL GBIsInstagramBundle(void) {
     UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(pan:)];
     [self.card addGestureRecognizer:pan];
 
-    [self refreshInstagramScanSection];
+    [self applyPanelMode];
+    // The control app can flip the mode while we're in the background; re-read when we come back.
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(appBecameActive)
+                                                 name:UIApplicationDidBecomeActiveNotification object:nil];
+}
+
+- (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; }
+
+- (void)appBecameActive {
+    if (self.view.window.hidden) return;
+    [[GBStore shared] reloadSmsSettings];
+    [self refreshServiceLine];
+    [self applyPanelMode];
 }
 
 - (BOOL)isInstagramHost { return GBIsInstagramBundle(); }
 
-- (void)refreshInstagramScanSection {
-    BOOL ig = [self isInstagramHost];
-    self.scanButton.hidden = !ig;
-    if (!ig) {
-        self.scanHintLabel.hidden = YES;
-        self.usernamesView.hidden = YES;
-        self.exportButton.hidden = YES;
+// Show exactly one function: SMS or the username scraper, per the control app's Settings switch.
+- (void)applyPanelMode {
+    NSString *mode = [GBStore shared].panelMode ?: @"sms";
+    BOOL scraper = [mode isEqualToString:@"scraper"];
+    BOOL changed = ![mode isEqualToString:self.appliedMode];
+    self.appliedMode = mode;
+    self.smsStack.hidden = scraper;
+    self.scraperStack.hidden = !scraper;
+    self.titleLabel.text = scraper ? @"Heavenzy · Usernames" : @"Heavenzy · SMS";
+    if (scraper) {
+        BOOL ig = [self isInstagramHost];
+        self.scanButton.enabled = ig;
+        self.scanButton.alpha = ig ? 1 : 0.5;
+        if (!ig && !self.collectedUsernames.count)
+            self.scanHintLabel.text = @"The username scraper works inside Instagram.";
     }
+    if (changed && self.positioned) [self relayoutCard];
+}
+
+- (UIStackView *)actionsRow {
+    for (UIView *v in self.scraperStack.arrangedSubviews) if (v.tag == 77) return (UIStackView *)v;
+    return nil;
+}
+
+- (void)refreshUsernameList {
+    NSUInteger n = self.collectedUsernames.count;
+    BOOL any = n > 0;
+    self.listToggle.hidden = !any;
+    [self actionsRow].hidden = !any;
+    self.usernamesView.hidden = !(any && self.listExpanded);
+    if (any) {
+        NSString *title = [NSString stringWithFormat:@"%lu username%@", (unsigned long)n, n == 1 ? @"" : @"s"];
+        [self.listToggle setTitle:title forState:UIControlStateNormal];
+        UIImageSymbolConfiguration *c = [UIImageSymbolConfiguration configurationWithPointSize:12 weight:UIImageSymbolWeightBold];
+        [self.listToggle setImage:[UIImage systemImageNamed:self.listExpanded ? @"chevron.up" : @"chevron.down" withConfiguration:c]
+                         forState:UIControlStateNormal];
+        NSMutableString *lines = [NSMutableString new];
+        for (NSString *u in self.collectedUsernames) [lines appendFormat:@"@%@\n", u];
+        self.usernamesView.text = lines;
+    }
+}
+
+- (void)toggleList {
+    self.listExpanded = !self.listExpanded;
+    [self refreshUsernameList];
+    [self relayoutCard];
+}
+
+- (void)clearUsernames {
+    [self.collectedUsernames removeAllObjects];
+    self.listExpanded = NO;
+    self.scanHintLabel.text = @"Open a followers / following list, tap Scan, scroll, scan again.";
+    [self refreshUsernameList];
+    [self relayoutCard];
 }
 
 - (NSString *)serviceLine {
@@ -247,24 +343,17 @@ static BOOL GBIsInstagramBundle(void) {
     [GBScanner scanScene:scene excludingWindow:self.view.window completion:^(NSArray<NSString *> *usernames, NSString *method) {
         __strong typeof(w) s = w; if (!s) return;
         s.scanButton.enabled = YES;
-        [s.scanButton setTitle:@"Scan loaded usernames" forState:UIControlStateNormal];
+        [s.scanButton setTitle:@"Scan usernames" forState:UIControlStateNormal];
         NSUInteger before = s.collectedUsernames.count;
         for (NSString *u in usernames) [s.collectedUsernames addObject:u];
         NSUInteger added = s.collectedUsernames.count - before;
-        if (s.collectedUsernames.count) {
-            s.scanHintLabel.hidden = NO;
-            s.usernamesView.hidden = NO;
-            s.exportButton.hidden = NO;
-            NSMutableString *lines = [NSMutableString new];
-            for (NSString *u in s.collectedUsernames) [lines appendFormat:@"@%@\n", u];
-            s.usernamesView.text = lines;
-            NSString *via = method.length ? method : @"none";
-            s.scanHintLabel.text = [NSString stringWithFormat:@"%lu total (%lu new this tap · %@). Scroll more & scan again for additional pages.",
-                                    (unsigned long)s.collectedUsernames.count, (unsigned long)added, via];
+        if (usernames.count) {
+            s.scanHintLabel.text = [NSString stringWithFormat:@"+%lu new%@ · scroll and scan again for more.",
+                                    (unsigned long)added, [method isEqualToString:@"ocr"] ? @" (OCR)" : @""];
         } else {
-            s.scanHintLabel.hidden = NO;
-            s.scanHintLabel.text = @"No usernames found on this screen. Open a followers/following list and try again.";
+            s.scanHintLabel.text = @"Nothing found here — open a followers / following list and try again.";
         }
+        [s refreshUsernameList];
         [s relayoutCard];
     }];
 }
@@ -281,7 +370,7 @@ static BOOL GBIsInstagramBundle(void) {
     NSMutableString *lines = [NSMutableString new];
     for (NSString *u in self.collectedUsernames) [lines appendFormat:@"@%@\n", u];
     UIPasteboard.generalPasteboard.string = lines;
-    [self flash:self.scanHintLabel text:@"All usernames copied."];
+    [self flash:self.scanHintLabel text:[NSString stringWithFormat:@"%lu usernames copied.", (unsigned long)self.collectedUsernames.count]];
 }
 
 - (void)getTapped {
@@ -399,6 +488,7 @@ static NSMapTable<UIWindowScene *, GBOverlay *> *gOverlays;
     // Pick up provider/key changes made in the Heavenzy app since launch and refresh the header line.
     [[GBStore shared] reloadSmsSettings];
     [(GBOverlayController *)self.rootViewController refreshServiceLine];
+    [(GBOverlayController *)self.rootViewController applyPanelMode];
     self.hidden = NO;
     static BOOL forcedOnce = NO;
     if (!forcedOnce) {

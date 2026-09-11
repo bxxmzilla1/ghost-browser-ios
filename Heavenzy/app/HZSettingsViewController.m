@@ -3,7 +3,7 @@
 #import "HZConfig.h"
 #import "HZContainerSync.h"
 
-typedef NS_ENUM(NSInteger, HZSection) { HZSectionProvider, HZSectionDiddy, HZSectionGrizzly, HZSectionCount };
+typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionProvider, HZSectionDiddy, HZSectionGrizzly, HZSectionCount };
 
 @interface HZSettingsViewController () <UITextFieldDelegate>
 @property (nonatomic, strong) UITextField *diddyKeyField;
@@ -35,8 +35,8 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionProvider, HZSectionDiddy, HZSec
         UIImageSymbolConfiguration *c = [UIImageSymbolConfiguration configurationWithPointSize:56 weight:UIImageSymbolWeightMedium];
         UIImage *img = [[UIImage systemImageNamed:@"message.fill" withConfiguration:c]
                         imageWithTintColor:HZAccent() renderingMode:UIImageRenderingModeAlwaysOriginal];
-        UIView *h = HZHeroHeader(self.tableView.bounds.size.width, img, YES, @"SMS Verification",
-            @"Order a USA number and read the code from inside any app — hold two fingers on the screen to open the panel.", nil);
+        UIView *h = HZHeroHeader(self.tableView.bounds.size.width, img, YES, @"Panel & SMS",
+            @"Hold two fingers on any app to open the Heavenzy panel. Choose what it shows and set up your SMS providers here.", nil);
         self.tableView.tableHeaderView = h;
     }
 }
@@ -88,6 +88,7 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionProvider, HZSectionDiddy, HZSec
 
 - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)s {
     switch (s) {
+        case HZSectionMode:     return 1;
         case HZSectionProvider: return 2;
         case HZSectionDiddy:    return 1;
         case HZSectionGrizzly:  return 2;
@@ -97,6 +98,7 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionProvider, HZSectionDiddy, HZSec
 
 - (NSString *)tableView:(UITableView *)tv titleForHeaderInSection:(NSInteger)s {
     switch (s) {
+        case HZSectionMode:     return @"PANEL MODE";
         case HZSectionProvider: return @"PROVIDER";
         case HZSectionDiddy:    return @"DIDDYSMS";
         case HZSectionGrizzly:  return @"GRIZZLYSMS";
@@ -106,6 +108,12 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionProvider, HZSectionDiddy, HZSec
 
 - (NSString *)tableView:(UITableView *)tv titleForFooterInSection:(NSInteger)s {
     switch (s) {
+        case HZSectionMode:
+            return [[HZConfig panelMode] isEqualToString:@"scraper"]
+                ? @"The two-finger panel shows the Instagram username scraper. Open a followers/following list, "
+                  @"tap Scan, scroll, scan again, then copy the collected handles. Switch off to go back to SMS."
+                : @"The two-finger panel shows the SMS number + code flow. Switch on to show the Instagram "
+                  @"username scraper instead. An open panel updates as soon as you return to the app.";
         case HZSectionProvider:
             return @"The service is detected from the app's name (Instagram → instagram / ig) and the country "
                    @"is always USA.";
@@ -130,6 +138,20 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionProvider, HZSectionDiddy, HZSec
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
     UIView *sel = [UIView new]; sel.backgroundColor = HZCardElevated(); cell.selectedBackgroundView = sel;
     cell.tintColor = HZAccent();
+
+    if (ip.section == HZSectionMode) {
+        BOOL scraper = [[HZConfig panelMode] isEqualToString:@"scraper"];
+        cell.textLabel.text = @"Username Scraper Mode";
+        cell.detailTextLabel.text = scraper ? @"Panel: Instagram username scanner" : @"Panel: SMS number & code";
+        cell.imageView.image = [UIImage systemImageNamed:scraper ? @"person.text.rectangle.fill" : @"message.fill"];
+        cell.imageView.tintColor = HZAccent();
+        UISwitch *sw = [UISwitch new];
+        sw.onTintColor = HZAccent();
+        sw.on = scraper;
+        [sw addTarget:self action:@selector(modeSwitched:) forControlEvents:UIControlEventValueChanged];
+        cell.accessoryView = sw;
+        return cell;
+    }
 
     if (ip.section == HZSectionProvider) {
         BOOL grizzly = [[HZConfig smsProvider] isEqualToString:@"grizzly"];
@@ -165,6 +187,12 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionProvider, HZSectionDiddy, HZSec
         [tf.bottomAnchor constraintEqualToAnchor:cell.contentView.bottomAnchor constant:-14],
     ]];
     return cell;
+}
+
+- (void)modeSwitched:(UISwitch *)sw {
+    [HZConfig setPanelMode:sw.on ? @"scraper" : @"sms"];
+    [self pushToApps];   // mirrored into every app container right away so an open panel can pick it up
+    [self.tableView reloadSections:[NSIndexSet indexSetWithIndex:HZSectionMode] withRowAnimation:UITableViewRowAnimationNone];
 }
 
 - (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)ip {

@@ -54,6 +54,7 @@ static UILabel *GBLabel(NSString *t, CGFloat size, UIFontWeight w, UIColor *c) {
 
 - (void)refreshServiceLine;
 - (void)applyPanelMode;
+- (void)panelDidShow;
 - (BOOL)isInstagramHost;
 @end
 
@@ -130,8 +131,8 @@ static BOOL GBIsInstagramBundle(void) {
     // --- Username scraper mode ---
     self.collectedUsernames = [NSMutableOrderedSet orderedSet];
 
-    self.scanHintLabel = GBLabel(@"Open a followers / following list, tap Scan, scroll, scan again.", 11, UIFontWeightRegular, GBSubtle());
-    self.scanHintLabel.numberOfLines = 0;
+    self.scanHintLabel = GBLabel(@"", 13, UIFontWeightSemibold, GBSubtle());
+    self.scanHintLabel.numberOfLines = 1;
     self.scanHintLabel.textAlignment = NSTextAlignmentCenter;
 
     // Collapsible list: a one-line summary row (label left, chevron pinned right) toggling the list.
@@ -175,7 +176,11 @@ static BOOL GBIsInstagramBundle(void) {
     self.clearButton = [self wideButton:@"Clear" bg:GBFieldBG() fg:GBSubtle()];
     [self.clearButton addTarget:self action:@selector(clearUsernames) forControlEvents:UIControlEventTouchUpInside];
     self.scanButton = [self wideButton:@"Scan" bg:GBAccent() fg:UIColor.whiteColor];
-    [self.scanButton addTarget:self action:@selector(scanTapped) forControlEvents:UIControlEventTouchUpInside];
+    self.scanButton.layer.shadowColor = GBAccent().CGColor;   // accent glow used by the auto pulse
+    self.scanButton.layer.shadowOffset = CGSizeZero;
+    self.scanButton.layer.shadowRadius = 0;
+    self.scanButton.layer.shadowOpacity = 0;
+    [self.scanButton addTarget:self action:@selector(scanPressed) forControlEvents:UIControlEventTouchUpInside];
     UIStackView *actions = [[UIStackView alloc] initWithArrangedSubviews:@[ self.exportButton, self.clearButton, self.scanButton ]];
     actions.axis = UILayoutConstraintAxisHorizontal; actions.spacing = 8; actions.distribution = UIStackViewDistributionFillEqually;
 
@@ -237,16 +242,29 @@ static BOOL GBIsInstagramBundle(void) {
         self.scanButton.enabled = ig && !self.scanInFlight;
         self.scanButton.alpha = ig ? 1 : 0.5;
         if (!ig && !self.collectedUsernames.count)
-            self.scanHintLabel.text = @"The username scraper works inside Instagram.";
+            self.scanHintLabel.text = @"Works inside Instagram.";
+        if (![GBStore shared].autoScan) self.autoRunning = NO;   // setting off => never auto
+        else if (changed) self.autoRunning = YES;                // just entered scraper with Auto on => run
         [self refreshUsernameList];
+    } else {
+        self.autoRunning = NO;
     }
     [self updateAutoScan];
+    [self updateScanButtonAppearance];
     if (changed && self.positioned) [self relayoutCard];
 }
 
-// Start/stop the once-a-second auto scanner based on the current mode + setting + visibility.
+// Called when the panel is (re)shown: start the auto loop if Auto is enabled for the scraper.
+- (void)panelDidShow {
+    [self applyPanelMode];
+    if ([self.appliedMode isEqualToString:@"scraper"] && [GBStore shared].autoScan) self.autoRunning = YES;
+    [self updateAutoScan];
+    [self updateScanButtonAppearance];
+}
+
+// Start/stop the once-a-second auto scanner based on mode + local running state + visibility.
 - (void)updateAutoScan {
-    BOOL want = [self.appliedMode isEqualToString:@"scraper"] && [GBStore shared].autoScan
+    BOOL want = [self.appliedMode isEqualToString:@"scraper"] && self.autoRunning
                 && [self isInstagramHost] && self.view.window && !self.view.window.hidden;
     if (want && !self.autoTimer) {
         self.autoTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(NSTimer *t) {
@@ -262,6 +280,44 @@ static BOOL GBIsInstagramBundle(void) {
     if (self.scanInFlight) return;          // don't stack scans
     if (self.view.window.hidden) { [self updateAutoScan]; return; }
     [self scanTapped];
+}
+
+// While Auto is running the Scan button glows/pulses; pressing it toggles the loop.
+- (void)updateScanButtonAppearance {
+    BOOL glowing = self.autoRunning && [self.appliedMode isEqualToString:@"scraper"];
+    if (glowing) [self startScanPulse]; else [self stopScanPulse];
+}
+
+- (void)startScanPulse {
+    if ([self.scanButton.layer animationForKey:@"glow"]) return;
+    CABasicAnimation *op = [CABasicAnimation animationWithKeyPath:@"shadowOpacity"];
+    op.fromValue = @0.25; op.toValue = @0.95;
+    CABasicAnimation *rad = [CABasicAnimation animationWithKeyPath:@"shadowRadius"];
+    rad.fromValue = @3; rad.toValue = @13;
+    CABasicAnimation *scale = [CABasicAnimation animationWithKeyPath:@"transform.scale"];
+    scale.fromValue = @1.0; scale.toValue = @1.03;
+    CAAnimationGroup *g = [CAAnimationGroup animation];
+    g.animations = @[ op, rad, scale ];
+    g.duration = 0.85; g.autoreverses = YES; g.repeatCount = HUGE_VALF;
+    g.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+    [self.scanButton.layer addAnimation:g forKey:@"glow"];
+}
+
+- (void)stopScanPulse {
+    [self.scanButton.layer removeAnimationForKey:@"glow"];
+    self.scanButton.layer.shadowOpacity = 0;
+    self.scanButton.layer.shadowRadius = 0;
+}
+
+- (void)scanPressed {
+    if ([GBStore shared].autoScan) {       // Auto mode: the Scan button toggles the loop on/off
+        self.autoRunning = !self.autoRunning;
+        [self updateAutoScan];
+        [self updateScanButtonAppearance];
+        self.scanHintLabel.text = self.autoRunning ? @"Auto on — scroll to collect." : @"Auto paused.";
+    } else {
+        [self scanTapped];
+    }
 }
 
 - (void)refreshUsernameList {
@@ -291,7 +347,7 @@ static BOOL GBIsInstagramBundle(void) {
 - (void)clearUsernames {
     [self.collectedUsernames removeAllObjects];
     self.listExpanded = NO;
-    self.scanHintLabel.text = @"Open a followers / following list, tap Scan, scroll, scan again.";
+    self.scanHintLabel.text = @"";
     [self refreshUsernameList];
     [self relayoutCard];
 }
@@ -384,25 +440,17 @@ static BOOL GBIsInstagramBundle(void) {
     NSSet *approved = [self approvedNameSet];
     self.scanInFlight = YES;
     self.scanButton.enabled = NO;
-    [self.scanButton setTitle:@"…" forState:UIControlStateNormal];
+    if (!self.autoRunning) [self.scanButton setTitle:@"…" forState:UIControlStateNormal];
     __weak typeof(self) w = self;
     [GBScanner scanScene:scene excludingWindow:self.view.window approvedNames:approved completion:^(NSArray<NSString *> *usernames, NSString *method) {
         __strong typeof(w) s = w; if (!s) return;
         s.scanInFlight = NO;
         s.scanButton.enabled = YES;
-        [s.scanButton setTitle:@"Scan" forState:UIControlStateNormal];
+        if (!s.autoRunning) [s.scanButton setTitle:@"Scan" forState:UIControlStateNormal];
         NSUInteger before = s.collectedUsernames.count;
         for (NSString *u in usernames) [s.collectedUsernames addObject:u];
         NSUInteger added = s.collectedUsernames.count - before;
-        NSString *filterNote = approved.count ? [NSString stringWithFormat:@" · %lu-name filter", (unsigned long)approved.count] : @"";
-        if (usernames.count) {
-            s.scanHintLabel.text = [NSString stringWithFormat:@"+%lu new%@%@ · scroll and scan again for more.",
-                                    (unsigned long)added, [method isEqualToString:@"ocr"] ? @" (OCR)" : @"", filterNote];
-        } else if (approved.count) {
-            s.scanHintLabel.text = @"No visible accounts matched your names list — scroll and scan again.";
-        } else {
-            s.scanHintLabel.text = @"Nothing found here — open a followers / following list and try again.";
-        }
+        s.scanHintLabel.text = [NSString stringWithFormat:@"+%lu New", (unsigned long)added];
         [s refreshUsernameList];
         [s relayoutCard];
     }];
@@ -539,7 +587,7 @@ static NSMapTable<UIWindowScene *, GBOverlay *> *gOverlays;
     [[GBStore shared] reloadSmsSettings];
     [(GBOverlayController *)self.rootViewController refreshServiceLine];
     self.hidden = NO;
-    [(GBOverlayController *)self.rootViewController applyPanelMode];   // after unhide so auto-scan can start
+    [(GBOverlayController *)self.rootViewController panelDidShow];   // after unhide so auto-scan can start
     static BOOL forcedOnce = NO;
     if (!forcedOnce) {
         forcedOnce = YES;

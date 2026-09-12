@@ -31,15 +31,23 @@ static int HZRun(NSString *tool, NSArray<NSString *> *args, NSString *cwd, NSStr
     posix_spawn_file_actions_adddup2(&fa, fds[1], STDOUT_FILENO);
     posix_spawn_file_actions_adddup2(&fa, fds[1], STDERR_FILENO);
     posix_spawn_file_actions_addclose(&fa, fds[0]);
-    if (cwd.length) posix_spawn_file_actions_addchdir_np(&fa, cwd.fileSystemRepresentation);
 
     NSMutableArray *all = [NSMutableArray arrayWithObject:tool];
     [all addObjectsFromArray:args];
     char **argv = calloc(all.count + 1, sizeof(char *));
     for (NSUInteger i = 0; i < all.count; i++) argv[i] = strdup([all[i] fileSystemRepresentation]);
 
+    // The iOS SDK hides posix_spawn_file_actions_addchdir_np, so hop the parent's cwd around the spawn
+    // instead (the child inherits it). Serialised so concurrent runs can't race on the cwd.
+    static dispatch_semaphore_t cwdLock; static dispatch_once_t once;
+    dispatch_once(&once, ^{ cwdLock = dispatch_semaphore_create(1); });
+    dispatch_semaphore_wait(cwdLock, DISPATCH_TIME_FOREVER);
+    char saved[PATH_MAX] = {0};
+    if (cwd.length) { getcwd(saved, sizeof saved); chdir(cwd.fileSystemRepresentation); }
     pid_t pid = 0;
     int rc = posix_spawn(&pid, tool.fileSystemRepresentation, &fa, NULL, argv, NULL);
+    if (cwd.length && saved[0]) chdir(saved);
+    dispatch_semaphore_signal(cwdLock);
     posix_spawn_file_actions_destroy(&fa);
     for (NSUInteger i = 0; i < all.count; i++) free(argv[i]);
     free(argv);
@@ -282,7 +290,7 @@ static NSString *HZIsolate(NSString *s, NSString *oldBid, NSString *newBid) {
     // 4. Zip back into an .ipa.
     progress(@"Packing .ipa…");
     [fm createDirectoryAtPath:HZOutputDir() withIntermediateDirectories:YES attributes:nil error:nil];
-    NSString *safeName = [[newName ?: src.name] stringByReplacingOccurrencesOfString:@"/" withString:@"-"];
+    NSString *safeName = [(newName.length ? newName : src.name) stringByReplacingOccurrencesOfString:@"/" withString:@"-"];
     NSString *outPath = [HZOutputDir() stringByAppendingPathComponent:[NSString stringWithFormat:@"%@ (%@).ipa", safeName, newBid]];
     [fm removeItemAtPath:outPath error:nil];
     NSString *zipOut = nil;

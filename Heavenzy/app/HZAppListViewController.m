@@ -1,6 +1,7 @@
 #import "HZAppListViewController.h"
 #import "HZAppDetailViewController.h"
 #import "HZSettingsViewController.h"
+#import "HZCloneViewController.h"
 #import "HZTheme.h"
 #import "HZConfig.h"
 #import "HZDevice.h"
@@ -86,17 +87,23 @@
     self.navigationItem.hidesSearchBarWhenScrolling = YES;
 
     UIImageSymbolConfiguration *c = [UIImageSymbolConfiguration configurationWithPointSize:17 weight:UIImageSymbolWeightMedium];
-    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
+    UIBarButtonItem *settings = [[UIBarButtonItem alloc]
         initWithImage:[UIImage systemImageNamed:@"slider.horizontal.3" withConfiguration:c]
                 style:UIBarButtonItemStylePlain target:self action:@selector(showSettings)];
+    UIBarButtonItem *clone = [[UIBarButtonItem alloc]
+        initWithImage:[UIImage systemImageNamed:@"plus.square.on.square" withConfiguration:c]
+                style:UIBarButtonItemStylePlain target:self action:@selector(showCloner)];
+    self.navigationItem.rightBarButtonItems = @[ settings, clone ];
 
     [self loadApps];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
-    [self refreshHeader];
-    [self.tableView reloadData];   // reflect enable/identity changes made in the detail screen
+    // Re-enumerate so freshly installed clones show up, and reflect enable/identity changes made in
+    // the detail screen. Keep an active search filter applied.
+    [self loadApps];
+    if (self.search.searchBar.text.length) [self updateSearchResultsForSearchController:self.search];
 }
 
 - (void)viewDidLayoutSubviews {
@@ -114,6 +121,10 @@
 
 - (void)showSettings {
     [self.navigationController pushViewController:[HZSettingsViewController new] animated:YES];
+}
+
+- (void)showCloner {
+    [self.navigationController pushViewController:[HZCloneViewController new] animated:YES];
 }
 
 - (void)loadApps {

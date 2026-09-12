@@ -63,7 +63,7 @@ enum { SEC_SOURCE, SEC_APP, SEC_CLONE, SEC_BUILD, SEC_STATUS, SEC_COUNT };
         UIImage *img = [[UIImage systemImageNamed:@"plus.square.on.square.fill" withConfiguration:c]
                         imageWithTintColor:HZAccent() renderingMode:UIImageRenderingModeAlwaysOriginal];
         self.tableView.tableHeaderView = HZHeroHeader(self.tableView.bounds.size.width, img, YES, @"Clone an app",
-            @"Each clone gets its own bundle ID, sandbox, keychain and app groups, no iCloud, and a fresh Heavenzy identity — nothing is shared with the original or other clones.", nil);
+            @"Each clone gets its own bundle ID, sandbox, keychain and app groups, no iCloud — nothing is shared with the original or other clones. Clones are installed tweak-free so they're clean from tweak detection.", nil);
     }
 }
 
@@ -138,23 +138,27 @@ enum { SEC_SOURCE, SEC_APP, SEC_CLONE, SEC_BUILD, SEC_STATUS, SEC_COUNT };
         if (!ipaPath) { [self setBusy:NO status:nil]; [self setStatus:error error:YES]; return; }
         self.builtIPA = ipaPath;
         [self.tableView reloadData];   // share row appears
+        // Configure Choicy up-front so the clone is tweak-free no matter how it ends up installed.
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{ [HZCloner disableTweaksForApp:bid]; });
         [self setStatus:@"Installing…" error:NO];
         [HZCloner installIPA:ipaPath bundleId:bid completion:^(BOOL ok, NSString *installError) {
             if (!ok) {
                 [self setBusy:NO status:nil];
-                [self setStatus:[NSString stringWithFormat:@"Built: %@\n\n%@", ipaPath.lastPathComponent, installError] error:YES];
+                // The clone was built fine; only the one-tap install needs AppSync. Point to sideloading.
+                [self setStatus:[NSString stringWithFormat:@"Clone built ✓  %@\nSaved to Documents/Heavenzy.\n\n%@\n\nTap “Share .ipa” below to install it with TrollStore or Filza.", ipaPath.lastPathComponent, installError] error:NO];
                 [self.tableView reloadData];
                 return;
             }
-            [self setStatus:@"Installed. Enabling spoofing…" error:NO];
+            [self setStatus:@"Installed. Making it tweak-free…" error:NO];
             dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-                BOOL spoofed = [HZCloner enableSpoofingForApp:bid];
+                [HZCloner disableTweaksForApp:bid];   // now the container exists → set the inert flag too
+                BOOL choicy = [HZCloner isChoicyInstalled];
                 dispatch_async(dispatch_get_main_queue(), ^{
                     [self setBusy:NO status:nil];
-                    [self setStatus:spoofed
-                        ? [NSString stringWithFormat:@"Done. %@ (%@) is installed with a fresh identity and spoofing on. Open it from the Home Screen.", name, bid]
-                        : [NSString stringWithFormat:@"Installed %@, but its container wasn't ready yet — toggle it on in the app list to finish.", bid]
-                          error:!spoofed];
+                    [self setStatus:choicy
+                        ? [NSString stringWithFormat:@"Done. %@ (%@) is installed and Choicy is set to block all tweak injection for it — it runs clean, no Heavenzy panel, nothing to detect. Open it from the Home Screen.", name, bid]
+                        : [NSString stringWithFormat:@"Done. %@ (%@) is installed and the Heavenzy panel is disabled inside it. For a fully undetectable clone, install Choicy (it's already configured to block injection for this app).", name, bid]
+                          error:NO];
                     [self.tableView reloadData];
                 });
             });
@@ -232,8 +236,8 @@ enum { SEC_SOURCE, SEC_APP, SEC_CLONE, SEC_BUILD, SEC_STATUS, SEC_COUNT };
 - (NSString *)tableView:(UITableView *)tv titleForFooterInSection:(NSInteger)s {
     switch (s) {
         case SEC_SOURCE: return @"Must be a decrypted IPA you're entitled to. Heavenzy never downloads or decrypts App Store apps.";
-        case SEC_CLONE:  return self.source ? @"Keep the original name inside the new name/bundle ID (e.g. instagram2) so the SMS service and Kairos scraper still detect the app. Removing extensions (share sheet, widgets, notifications service) is recommended — they break in clones." : nil;
-        case SEC_STATUS: return @"One-tap install needs AppSync Unified. Otherwise the .ipa is saved to /var/mobile/Documents/Heavenzy — share it to TrollStore or open it with Filza.";
+        case SEC_CLONE:  return self.source ? @"The clone gets its own bundle ID, sandbox, keychain and app groups, and no iCloud — it shares nothing with the original or other clones. Removing extensions (share sheet, widgets, notifications) is recommended — they break in clones." : nil;
+        case SEC_STATUS: return @"Clones are made tweak-free: Choicy (recommended) is configured to block all tweak injection for the clone, so Heavenzy isn't loaded inside it and there's nothing to detect. One-tap install needs AppSync Unified; otherwise the .ipa is saved to /var/mobile/Documents/Heavenzy — share it to TrollStore or open it with Filza.";
     }
     return nil;
 }

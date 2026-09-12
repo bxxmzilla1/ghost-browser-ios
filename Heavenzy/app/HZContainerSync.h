@@ -18,6 +18,10 @@
 /// in-app SMS panel can reach them even in apps that aren't spoofed. Returns how many were updated.
 + (NSInteger)writeSmsSettingsToAllApps;
 
+/// Mark a clone's container so the Heavenzy tweak stays inert inside it. NO until the app has a
+/// data container (call right after install; retry briefly).
++ (BOOL)markTweakFreeForApp:(NSString *)bundleId;
+
 /// TRUE if an erase is still queued in the app's own container. The tweak clears this flag from the
 /// container the moment it performs the wipe, so this reflects the real, post-launch state (unlike
 /// the central HZConfig copy, which the sandboxed tweak can't reach without libSandy).

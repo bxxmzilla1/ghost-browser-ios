@@ -44,9 +44,14 @@
 /// Install an .ipa through LSApplicationWorkspace (requires AppSync Unified). Main-queue completion.
 + (void)installIPA:(NSString *)ipaPath bundleId:(NSString *)bundleId completion:(void (^)(BOOL ok, NSString *error))completion;
 
-/// Roll a fresh identity, switch spoofing on and push it into the clone's container. Retries briefly
-/// while installd finishes creating the container. Returns YES once written.
-+ (BOOL)enableSpoofingForApp:(NSString *)bundleId;
+/// Make the clone completely tweak-free: configures Choicy to block all tweak injection for this
+/// bundle id (so no dylib is even mapped) and, as a fallback, flags the clone's own container so the
+/// Heavenzy tweak stays inert. Retries the container write briefly while installd creates it.
++ (void)disableTweaksForApp:(NSString *)bundleId;
+
+/// Whether Choicy / AppSync Unified are present (used for guidance in the UI).
++ (BOOL)isChoicyInstalled;
++ (BOOL)isAppSyncInstalled;
 
 /// Remove a source's extraction directory.
 + (void)cleanup:(HZCloneSource *)source;

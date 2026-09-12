@@ -204,6 +204,17 @@ static void GBInstallGesture(void) {
         // control app (which links UIKit and would otherwise match the filter).
         if (!bundleID || [bundleID hasPrefix:@"com.apple."] || [bundleID isEqualToString:@"com.heavenzy.app"]) return;
 
+        // Clones built by the Heavenzy app are meant to be completely tweak-free (so Instagram/Meta
+        // can't detect Heavenzy inside them). If this process is a Heavenzy clone, do nothing at all:
+        // no %init, so no hooks/swizzles are installed, and no SMS/scraper panel or gesture. (Choicy,
+        // when installed, blocks the dylib from loading here entirely; this is the fallback for when
+        // it isn't.)
+        NSString *hzPlist = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Preferences/com.heavenzy.plist"];
+        if ([[NSDictionary dictionaryWithContentsOfFile:hzPlist][@"hzClone"] boolValue]) {
+            NSLog(@"[Heavenzy] Clone detected (%@) — staying inert.", bundleID);
+            return;
+        }
+
         // Try to reach the central store too (only works if libSandy happens to be installed); the
         // primary path is the per-app config the control app writes straight into this container.
         [HZConfig grantSandboxAccess];

@@ -2,6 +2,7 @@
 #import "HZConfig.h"
 #import "HZDevice.h"
 #import "HZContainerSync.h"
+#import <CoreFoundation/CoreFoundation.h>
 #import <objc/message.h>
 #import <spawn.h>
 #import <unistd.h>
@@ -336,17 +337,45 @@ static NSString *HZIsolate(NSString *s, NSString *oldBid, NSString *newBid) {
     });
 }
 
-+ (BOOL)enableSpoofingForApp:(NSString *)bundleId {
-    NSDictionary *identity = HZGenerateIdentity();
-    [HZConfig setIdentity:identity forApp:bundleId];
-    [HZConfig setEnabled:YES forApp:bundleId];
-    [HZConfig setWipePending:NO forApp:bundleId];
-    // installd creates the data container asynchronously; retry a few times before giving up.
+#pragma mark Tweak-free clones
+
+static BOOL HZAnyExists(NSArray<NSString *> *paths) {
+    for (NSString *p in paths) if ([[NSFileManager defaultManager] fileExistsAtPath:p]) return YES;
+    return NO;
+}
+
++ (BOOL)isChoicyInstalled {
+    return HZAnyExists(@[ @"/var/jb/Library/PreferenceBundles/ChoicyPrefs.bundle",
+                         @"/var/jb/Library/MobileSubstrate/DynamicLibraries/Choicy.dylib",
+                         @"/var/jb/usr/lib/TweakInject/Choicy.dylib",
+                         @"/Library/PreferenceBundles/ChoicyPrefs.bundle" ]);
+}
+
++ (BOOL)isAppSyncInstalled {
+    return HZAnyExists(@[ @"/var/jb/usr/lib/AppSyncUnified.dylib",
+                         @"/var/jb/usr/lib/AppSyncUnified-FrontBoard.dylib",
+                         @"/var/jb/Library/MobileSubstrate/DynamicLibraries/AppSyncUnified.dylib",
+                         @"/usr/lib/AppSyncUnified.dylib" ]);
+}
+
++ (void)disableTweaksForApp:(NSString *)bundleId {
+    // Primary path: tell Choicy to disable ALL tweak injection for this bundle id, so ellekit never
+    // maps any tweak dylib (Heavenzy or otherwise) into the clone — nothing to detect. Keyed by
+    // bundle id, so it also applies to a clone that's sideloaded later via TrollStore/Filza.
+    CFStringRef choicy = CFSTR("com.opa334.choicyprefs");
+    NSDictionary *existing = (__bridge_transfer NSDictionary *)CFPreferencesCopyAppValue(CFSTR("appSettings"), choicy);
+    NSMutableDictionary *appSettings = [existing isKindOfClass:NSDictionary.class] ? [existing mutableCopy] : [NSMutableDictionary dictionary];
+    appSettings[bundleId] = @{ @"tweakInjectionDisabled": @YES, @"overwriteGlobalTweakConfiguration": @YES };
+    CFPreferencesSetAppValue(CFSTR("appSettings"), (__bridge CFPropertyListRef)appSettings, choicy);
+    CFPreferencesAppSynchronize(choicy);
+
+    // Fallback for when Choicy isn't installed: mark the clone's own container so the Heavenzy tweak
+    // (which still gets injected by the UIKit filter) stays completely inert — no hooks, no panel.
+    // Only works once the app has a container, so retry briefly after install.
     for (int i = 0; i < 20; i++) {
-        if ([HZContainerSync writeForApp:bundleId identity:identity enabled:YES wipePending:NO]) return YES;
+        if ([HZContainerSync markTweakFreeForApp:bundleId]) break;
         usleep(250 * 1000);
     }
-    return NO;
 }
 
 @end

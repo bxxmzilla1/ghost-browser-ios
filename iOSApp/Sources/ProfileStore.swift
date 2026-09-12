@@ -9,6 +9,7 @@ final class ProfileStore: ObservableObject {
         static let privateMode = "ghost.privateMode"
         static let homeURL = "ghost.homeURL"
         static let activeID = "ghost.activeSession"
+        static let accountCounter = "ghost.accountCounter"
     }
 
     static let defaultHomeURL = "https://www.google.com"
@@ -170,6 +171,29 @@ final class ProfileStore: ObservableObject {
     func newSession(family: DeviceFamily?) -> BrowserSession {
         let profile = family.map { FingerprintProfile.random(family: $0) } ?? FingerprintProfile.random()
         return BrowserSession(name: profile.deviceLabel, profile: profile)
+    }
+
+    // MARK: Account attempts (Gmail)
+
+    private func nextAccountIndex() -> Int {
+        let n = UserDefaults.standard.integer(forKey: Keys.accountCounter) + 1
+        UserDefaults.standard.set(n, forKey: Keys.accountCounter)
+        return n
+    }
+
+    /// New, empty session for one signup attempt, already pointed at the Gmail signup page.
+    func newAccountSession(family: DeviceFamily) -> BrowserSession {
+        AccountFlow.makeSession(family: family, index: nextAccountIndex())
+    }
+
+    /// Throw away session `id` (identity + cookies) and replace it with a brand-new attempt of the
+    /// same device family. The new session is active when this returns.
+    @discardableResult
+    func burn(id: UUID, family: DeviceFamily) -> BrowserSession {
+        let fresh = add(newAccountSession(family: family))
+        setActive(fresh.id)
+        remove(id: id)   // safe: at least two sessions exist now, so this never re-seeds the store
+        return fresh
     }
 
     func duplicateActive() -> BrowserSession {

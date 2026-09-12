@@ -82,6 +82,23 @@ struct BrowserView: View {
             })
             .environmentObject(store)
         }
+        .confirmationDialog("Google wants this phone to SEND an SMS",
+                            isPresented: smsDialogShown, titleVisibility: .visible,
+                            presenting: model.smsIntent) { intent in
+            Button("Burn & retry as Windows PC") {
+                model.smsIntent = nil
+                burnAndRenew(family: .desktop)
+            }
+            Button("Go back a step") { model.smsIntent = nil; model.goBack() }
+            Button("Copy token\(intent.token.map { " (\($0))" } ?? "")") {
+                UIPasteboard.general.string = intent.token ?? intent.body
+                showToast("Token copied")
+            }
+            Button("Open Messages anyway") { model.openExternally(intent.url) }
+            Button("Cancel", role: .cancel) {}
+        } message: { intent in
+            Text("This is send-to-verify: the page asked to text \(intent.recipient) from your own number. Rented numbers can only receive, and this iPhone has no SIM, so it can't be completed. Go back and pick the option that texts a code to a number you enter, or burn this identity and retry as a desktop, where Google asks for a number instead.")
+        }
         .sheet(isPresented: $showIGBridge) {
             InstagramBridgeView(
                 currentURL: model.currentURL,
@@ -166,6 +183,20 @@ struct BrowserView: View {
             Spacer()
 
             Menu {
+                Section("Accounts") {
+                    Menu {
+                        Button { startGmail(.desktop) } label: { Label("As Windows PC · Chrome (recommended)", systemImage: "desktopcomputer") }
+                        Button { startGmail(.android) } label: { Label("As Android · Chrome", systemImage: "candybarphone") }
+                        Button { startGmail(.ios) } label: { Label("As iPhone · Safari", systemImage: "iphone") }
+                    } label: {
+                        Label("New Gmail account…", systemImage: "envelope.badge")
+                    }
+                    Button {
+                        burnAndRenew()
+                    } label: {
+                        Label("Burn & new identity", systemImage: "flame")
+                    }
+                }
                 Section("New identity for this session") {
                     Button {
                         store.profile = FingerprintProfile.random(family: .ios)
@@ -288,6 +319,32 @@ struct BrowserView: View {
     }
 
     @State private var previousActiveID: UUID?
+
+    // MARK: Account attempts
+
+    private var smsDialogShown: Binding<Bool> {
+        Binding(get: { model.smsIntent != nil }, set: { if !$0 { model.smsIntent = nil } })
+    }
+
+    /// New session (fresh identity, empty cookie jar) opened straight on the Gmail signup page.
+    /// The Heavenzy SMS panel (two-finger long-press) follows the site, so it rents a Google number.
+    private func startGmail(_ family: DeviceFamily) {
+        snapshotNow()
+        let s = store.add(store.newAccountSession(family: family))
+        store.setActive(s.id)   // switchSession wipes the shared store and loads the signup URL
+    }
+
+    /// Discard the current attempt entirely and start another with the same (or given) family.
+    private func burnAndRenew(family: DeviceFamily? = nil) {
+        let old = store.active
+        let fam = family ?? old.profile.family
+        if AccountFlow.isAccountSession(old) {
+            store.burn(id: old.id, family: fam)
+        } else {
+            // Not an account session: keep it, just spin up a fresh attempt alongside.
+            startGmail(fam)
+        }
+    }
 
     private func snapshotNow() {
         guard !store.privateMode, model.isConfigured else { return }

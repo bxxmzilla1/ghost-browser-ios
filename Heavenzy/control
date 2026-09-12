@@ -1,6 +1,6 @@
 Package: com.heavenzy.tweak
 Name: Heavenzy
-Version: 1.4.4
+Version: 1.4.5
 Architecture: iphoneos-arm64
 Description: Per-app device identity reset (Blaze-style): keeps your real iPhone model but resets serial, UDID, IDFV, IDFA, Wi-Fi/Bluetooth MAC and IMEI, plus a wipe + re-spoof that clears saved accounts and blocks iCloud restore, so an app sees a brand-new phone with a first-time install. Hold two fingers on any app to open the draggable Heavenzy SMS panel (touches pass through around it) to order a USA number via DiddySMS or GrizzlySMS and show the verification code; the service is detected from the app name. Configure apps and SMS API keys in the Heavenzy app. Settings has a Panel Mode switch: SMS mode, or Username Scraper mode which turns the panel into an Instagram username scanner (Scan, scroll, scan again, Copy). An optional Approved Names list keeps only accounts whose display-name first name matches, and Auto scan taps Scan every second so you just scroll. Close the panel with its X. The Clone screen (+ button) turns a decrypted IPA you supply into an isolated clone: new bundle ID and name, private keychain/app groups, no iCloud, extensions and iTunes metadata stripped, installed via AppSync (or shared as .ipa for TrollStore) and made completely tweak-free: Choicy is configured to block all tweak injection for the clone so Heavenzy isn't loaded inside it and there's nothing to detect.
 Maintainer: Heavenzy

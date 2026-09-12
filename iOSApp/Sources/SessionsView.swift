@@ -49,6 +49,12 @@ struct SessionsView: View {
                                 Button { create(.desktop) } label: { Label("Desktop · Chrome", systemImage: "desktopcomputer") }
                                 Button { create(nil) } label: { Label("Random device", systemImage: "dice") }
                             }
+                            Section("Accounts") {
+                                Button {
+                                    let s = store.add(store.newAccountSession(family: AccountFlow.recommendedFamily))
+                                    onSelect(s.id)
+                                } label: { Label("New Gmail attempt · Windows PC", systemImage: "envelope.badge") }
+                            }
                             Button {
                                 let copy = store.add(store.duplicateActive())
                                 onSelect(copy.id)

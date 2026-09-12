@@ -58,6 +58,10 @@
 @property (nonatomic, copy) NSString *panelMode;        // "sms" | "scraper" — what the panel shows
 @property (nonatomic, copy) NSString *approvedNames;    // scraper first-name filter (raw, one per line)
 @property (nonatomic, assign) BOOL autoScan;           // auto-tap Scan every second in scraper mode
+/// Host-app override of the SMS service brand (e.g. "google"). GhostBrowser writes it from the site
+/// being visited, so the panel orders the right number for a web signup instead of matching the
+/// browser's own app name.
+@property (nonatomic, copy) NSString *smsBrand;
 
 /// Re-read only the SMS/panel settings from disk (the control app updates them while we run).
 - (void)reloadSmsSettings;

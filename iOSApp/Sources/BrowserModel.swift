@@ -18,6 +18,9 @@ final class BrowserModel: NSObject, ObservableObject {
     @Published var progress: Double = 0
     @Published var isSecure = false
     @Published private(set) var proxyActive = false
+    /// Set when a page tries to open an `sms:` link (Google's send-to-verify). The UI explains the
+    /// dead end instead of silently bouncing to Messages.
+    @Published var smsIntent: SMSIntent?
 
     /// Fired after each committed top-level navigation finishes (used to snapshot cookies).
     var onNavigationFinished: ((URL?) -> Void)?
@@ -151,6 +154,12 @@ final class BrowserModel: NSObject, ObservableObject {
     func reload() { webView.reload() }
     func stop() { webView.stopLoading() }
 
+    /// Hand a non-web URL (sms:, mailto:, app links) to the system after all.
+    func openExternally(_ url: URL?) {
+        guard let url = url else { return }
+        UIApplication.shared.open(url)
+    }
+
     // MARK: Website data / cookies
 
     /// Wipes cookies, cache and storage for the web view's current data store.
@@ -192,7 +201,13 @@ extension BrowserModel: WKNavigationDelegate {
         if let url = request.url,
            let scheme = url.scheme?.lowercased(),
            !["http", "https", "about", "blob", "data", "file", "javascript"].contains(scheme) {
-            UIApplication.shared.open(url)
+            // `sms:` is Google's "send an SMS from this phone to verify" step. A rented number can't
+            // send, so surface it in-app (with a way out) rather than opening Messages.
+            if scheme == "sms", let intent = SMSIntent.parse(url) {
+                smsIntent = intent
+            } else {
+                UIApplication.shared.open(url)
+            }
             decisionHandler(.cancel)
             return
         }
@@ -216,6 +231,7 @@ extension BrowserModel: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         currentURL = webView.url
         pageTitle = webView.title ?? ""
+        HeavenzyBridge.syncSMSBrand(for: webView.url)   // SMS panel rents a number for *this* site
         onNavigationFinished?(webView.url)
     }
 

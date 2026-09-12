@@ -136,28 +136,27 @@ static void HZMain(dispatch_block_t b) { dispatch_async(dispatch_get_main_queue(
     NSString *unzip = HZToolPath(@"unzip");
     if (!unzip) { *error = [self missingTools]; return nil; }
 
-    BOOL scoped = [ipaURL startAccessingSecurityScopedResource];
+    NSString *ipaPath = ipaURL.path;
+    if (!ipaPath.length || ![fm isReadableFileAtPath:ipaPath]) { *error = [NSString stringWithFormat:@"Can't read %@.", ipaPath ?: @"the IPA"]; return nil; }
     NSString *work = [HZWorkRoot() stringByAppendingPathComponent:[NSUUID UUID].UUIDString];
     [fm createDirectoryAtPath:work withIntermediateDirectories:YES attributes:nil error:nil];
-    NSString *localIPA = [work stringByAppendingPathComponent:@"source.ipa"];
-    NSError *copyErr = nil;
-    [fm copyItemAtURL:ipaURL toURL:[NSURL fileURLWithPath:localIPA] error:&copyErr];
-    if (scoped) [ipaURL stopAccessingSecurityScopedResource];
-    if (copyErr) { *error = [NSString stringWithFormat:@"Couldn't read the IPA: %@", copyErr.localizedDescription]; return nil; }
 
+    // Unzip straight from the source (no 300+ MB copy). The document picker hands us a temporary copy
+    // already; a typed path is read in place.
+    BOOL scoped = [ipaURL startAccessingSecurityScopedResource];
     NSString *out = nil;
-    int rc = HZRun(unzip, @[ @"-q", @"-o", localIPA, @"-d", work ], nil, &out);
-    [fm removeItemAtPath:localIPA error:nil];
-    if (rc != 0) { *error = [NSString stringWithFormat:@"unzip failed (%d): %@", rc, out]; return nil; }
+    int rc = HZRun(unzip, @[ @"-q", @"-o", ipaPath, @"-d", work ], nil, &out);
+    if (scoped) [ipaURL stopAccessingSecurityScopedResource];
+    if (rc != 0) { [fm removeItemAtPath:work error:nil]; *error = [NSString stringWithFormat:@"unzip failed (%d): %@", rc, out]; return nil; }
 
     NSString *payload = [work stringByAppendingPathComponent:@"Payload"];
     NSString *appDir = nil;
     for (NSString *item in [fm contentsOfDirectoryAtPath:payload error:nil] ?: @[])
         if ([item.pathExtension isEqualToString:@"app"]) { appDir = [payload stringByAppendingPathComponent:item]; break; }
-    if (!appDir) { *error = @"Not a valid IPA: no Payload/*.app inside."; return nil; }
+    if (!appDir) { [fm removeItemAtPath:work error:nil]; *error = @"Not a valid IPA: no Payload/*.app inside."; return nil; }
 
-    NSMutableDictionary *info = [[NSDictionary dictionaryWithContentsOfFile:[appDir stringByAppendingPathComponent:@"Info.plist"]] mutableCopy];
-    if (!info[@"CFBundleIdentifier"] || !info[@"CFBundleExecutable"]) { *error = @"Info.plist is missing CFBundleIdentifier / CFBundleExecutable."; return nil; }
+    NSDictionary *info = [NSDictionary dictionaryWithContentsOfFile:[appDir stringByAppendingPathComponent:@"Info.plist"]];
+    if (!info[@"CFBundleIdentifier"] || !info[@"CFBundleExecutable"]) { [fm removeItemAtPath:work error:nil]; *error = @"Info.plist is missing CFBundleIdentifier / CFBundleExecutable."; return nil; }
 
     HZCloneSource *s = [HZCloneSource new];
     s.workDir = work; s.appDir = appDir;
@@ -217,7 +216,9 @@ static NSString *HZIsolate(NSString *s, NSString *oldBid, NSString *newBid) {
     // No iCloud of any kind: a clone must never restore or sync the original's state.
     for (NSString *k in @[ @"com.apple.developer.ubiquity-kvstore-identifier", @"com.apple.developer.ubiquity-container-identifiers",
                            @"com.apple.developer.icloud-container-identifiers", @"com.apple.developer.icloud-services",
-                           @"com.apple.developer.icloud-container-environment", @"com.apple.developer.icloud-container-development-container-identifiers" ]) {
+                           @"com.apple.developer.icloud-container-environment", @"com.apple.developer.icloud-container-development-container-identifiers",
+                           // Still point at the original app; leave them to the real install.
+                           @"com.apple.developer.associated-appclip-app-identifiers", @"com.apple.developer.associated-domains" ]) {
         [e removeObjectForKey:k];
     }
     return e;

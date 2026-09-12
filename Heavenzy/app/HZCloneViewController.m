@@ -107,18 +107,19 @@ enum { SEC_SOURCE, SEC_APP, SEC_CLONE, SEC_BUILD, SEC_STATUS, SEC_COUNT };
 - (void)loadIPA:(NSURL *)url {
     if (self.busy) return;
     if (self.source) { [HZCloner cleanup:self.source]; self.source = nil; self.builtIPA = nil; }
-    [self setBusy:YES status:[NSString stringWithFormat:@"Extracting %@…", url.lastPathComponent]];
+    [self.tableView reloadData];   // source cleared → sections collapse
+    [self setBusy:YES status:[NSString stringWithFormat:@"Extracting %@… (large IPAs take a minute)", url.lastPathComponent]];
     [HZCloner inspectIPA:url completion:^(HZCloneSource *source, NSString *error) {
-        [self setBusy:NO status:nil];
-        if (!source) { [self setStatus:error ?: @"Couldn't read the IPA." error:YES]; return; }
+        if (!source) { [self setBusy:NO status:nil]; [self setStatus:error ?: @"Couldn't read the IPA." error:YES]; return; }
         self.source = source;
         self.nameField.text = [NSString stringWithFormat:@"%@ 2", source.name];
         self.bundleField.text = [HZCloner suggestedBundleIdFor:source.bundleId];
+        [self.tableView reloadData];   // new sections appear; must happen before any begin/endUpdates
+        [self setBusy:NO status:nil];
         [self setStatus:source.encrypted
             ? @"This IPA is still encrypted (FairPlay). Heavenzy can only clone a decrypted IPA."
             : [NSString stringWithFormat:@"Loaded %@ %@ — decrypted, ready to clone.", source.name, source.version]
                   error:source.encrypted];
-        [self.tableView reloadData];
     }];
 }
 
@@ -136,6 +137,7 @@ enum { SEC_SOURCE, SEC_APP, SEC_CLONE, SEC_BUILD, SEC_STATUS, SEC_COUNT };
               completion:^(NSString *ipaPath, NSString *error) {
         if (!ipaPath) { [self setBusy:NO status:nil]; [self setStatus:error error:YES]; return; }
         self.builtIPA = ipaPath;
+        [self.tableView reloadData];   // share row appears
         [self setStatus:@"Installing…" error:NO];
         [HZCloner installIPA:ipaPath bundleId:bid completion:^(BOOL ok, NSString *installError) {
             if (!ok) {
@@ -177,7 +179,19 @@ enum { SEC_SOURCE, SEC_APP, SEC_CLONE, SEC_BUILD, SEC_STATUS, SEC_COUNT };
 - (void)setStatus:(NSString *)text error:(BOOL)isError {
     self.statusLabel.text = text;
     self.statusLabel.textColor = isError ? HZDanger() : HZTextMuted();
-    [UIView performWithoutAnimation:^{ [self.tableView beginUpdates]; [self.tableView endUpdates]; }];
+    [self syncTable];
+}
+
+// Re-measure the status row. If the model changed the row counts since the last load (source picked,
+// ipa built…) a plain begin/endUpdates would throw NSInternalInconsistencyException, so reload instead.
+- (void)syncTable {
+    UITableView *tv = self.tableView;
+    if (!tv.window) return;
+    BOOL mismatch = NO;
+    for (NSInteger s = 0; s < SEC_COUNT && !mismatch; s++)
+        if ([tv numberOfRowsInSection:s] != [self tableView:tv numberOfRowsInSection:s]) mismatch = YES;
+    if (mismatch) [tv reloadData];
+    else [UIView performWithoutAnimation:^{ [tv beginUpdates]; [tv endUpdates]; }];
 }
 
 - (void)dealloc { if (_source) [HZCloner cleanup:_source]; }

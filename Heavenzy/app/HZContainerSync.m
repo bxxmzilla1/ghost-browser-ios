@@ -61,18 +61,6 @@
     return n;
 }
 
-// Flag a clone's own container so the Heavenzy tweak stays completely inert inside it (no hooks, no
-// panel). Returns NO until the app has a data container (i.e. right after install).
-+ (BOOL)markTweakFreeForApp:(NSString *)bundleId {
-    NSString *path = [self plistPathForApp:bundleId];
-    if (!path) return NO;
-    NSMutableDictionary *d = [[NSDictionary dictionaryWithContentsOfFile:path] mutableCopy] ?: [NSMutableDictionary dictionary];
-    d[@"hzClone"] = @YES;
-    d[@"enabled"] = @NO;                 // a clean clone is never spoofed at runtime
-    [d removeObjectForKey:@"wipePending"];
-    return [d writeToFile:path atomically:YES];
-}
-
 + (BOOL)wipePendingForApp:(NSString *)bundleId {
     NSURL *container = [self dataContainerForApp:bundleId];
     if (!container) return [HZConfig wipePendingForApp:bundleId];   // never launched → central copy

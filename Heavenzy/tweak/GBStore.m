@@ -76,7 +76,6 @@ static NSString *GBPrefsPath(void) {
     _panelMode       = [d[@"panelMode"] isEqualToString:@"scraper"] ? @"scraper" : @"sms";
     _approvedNames   = [d[@"approvedNames"] copy];
     _autoScan        = [d[@"autoScan"] boolValue];
-    _smsBrand        = [d[@"smsBrand"] copy];
 }
 
 // SMS settings normally arrive via the control app writing our container plist; if they're not
@@ -167,7 +166,6 @@ static NSString *GBPrefsPath(void) {
     if (_panelMode)       d[@"panelMode"]       = _panelMode;
     if (_approvedNames.length) d[@"approvedNames"] = _approvedNames;
     d[@"autoScan"] = @(_autoScan);
-    if (_smsBrand.length)      d[@"smsBrand"]      = _smsBrand;   // owned by the host app (GhostBrowser)
     NSString *path = GBPrefsPath();
     [[NSFileManager defaultManager] createDirectoryAtPath:[path stringByDeletingLastPathComponent]
                               withIntermediateDirectories:YES attributes:nil error:nil];

@@ -57,4 +57,25 @@
 + (BOOL)autoScan;
 + (void)setAutoScan:(BOOL)on;
 
+#pragma mark - SpringBoard overrides (AppData-style icon renames + badge counts)
+
+/// These live in a separate file (springboard.plist) that SpringBoard reads directly, and are applied
+/// by the tweak's SpringBoard hooks. Changing one posts a Darwin notification so SpringBoard reloads.
+///   /var/mobile/Library/Preferences/Heavenzy/springboard.plist
+///   { "names": { "<bundleId>": "<custom name>" }, "badges": { "<bundleId>": <int> } }
++ (NSString *)springboardPlistPath;
+
+/// Custom home-screen name for an app. nil / empty removes the override (real name shows again).
++ (NSString *)customNameForApp:(NSString *)bundleId;
++ (void)setCustomName:(NSString *)name forApp:(NSString *)bundleId;
++ (NSDictionary<NSString *, NSString *> *)allCustomNames;
+
+/// Badge override for an app. nil = no override (leave the app's own badge alone). @0 clears the badge.
++ (NSNumber *)badgeForApp:(NSString *)bundleId;
++ (void)setBadge:(NSNumber *)badge forApp:(NSString *)bundleId;
++ (NSDictionary<NSString *, NSNumber *> *)allBadges;
+
+/// Tell the SpringBoard side (tweak) to re-read springboard.plist and re-apply names + badges.
++ (void)notifySpringBoard;
+
 @end

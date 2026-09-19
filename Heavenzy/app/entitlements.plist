@@ -14,5 +14,19 @@
 	<true/>
 	<key>com.apple.lsapplicationworkspace.rebuildLaunchServicesDatabase</key>
 	<true/>
+	<!-- Reset an app's privacy permissions (best-effort AppData "Reset Permissions"). -->
+	<key>com.apple.private.tcc.manager</key>
+	<true/>
+	<key>com.apple.private.tcc.manager.access.modify</key>
+	<array>
+		<string>kTCCServiceAll</string>
+	</array>
+	<!-- Offload apps via installd SPI (best-effort AppData "Offload App"). -->
+	<key>com.apple.private.mobileinstall.allowedSPI</key>
+	<array>
+		<string>Install</string>
+		<string>Uninstall</string>
+		<string>Browse</string>
+	</array>
 </dict>
 </plist>

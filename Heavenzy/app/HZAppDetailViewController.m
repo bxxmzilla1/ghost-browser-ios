@@ -1,11 +1,12 @@
 #import "HZAppDetailViewController.h"
+#import "HZAppToolsViewController.h"
 #import "HZTheme.h"
 #import "HZConfig.h"
 #import "HZDevice.h"
 #import "HZContainerSync.h"
 
 // Section indices.
-enum { SEC_ENABLE, SEC_DETAILS, SEC_ACTIONS, SEC_COUNT };
+enum { SEC_ENABLE, SEC_DETAILS, SEC_TOOLS, SEC_ACTIONS, SEC_COUNT };
 
 @interface HZAppDetailViewController ()
 @property (nonatomic, copy) NSString *bundleId;
@@ -86,13 +87,16 @@ enum { SEC_ENABLE, SEC_DETAILS, SEC_ACTIONS, SEC_COUNT };
     switch (s) {
         case SEC_ENABLE:  return 1;
         case SEC_DETAILS: return self.details.count;
+        case SEC_TOOLS:   return 1;   // App Data & Tools →
         case SEC_ACTIONS: return 2;   // Generate, Erase
         default:          return 0;
     }
 }
 
 - (NSString *)tableView:(UITableView *)tv titleForHeaderInSection:(NSInteger)s {
-    return s == SEC_DETAILS ? @"NEW IDENTITY  ·  TAP A VALUE TO COPY" : nil;
+    if (s == SEC_DETAILS) return @"NEW IDENTITY  ·  TAP A VALUE TO COPY";
+    if (s == SEC_TOOLS)   return @"APP DATA";
+    return nil;
 }
 
 - (NSString *)tableView:(UITableView *)tv titleForFooterInSection:(NSInteger)s {
@@ -145,6 +149,18 @@ enum { SEC_ENABLE, SEC_DETAILS, SEC_ACTIONS, SEC_COUNT };
             cell.selectionStyle = UITableViewCellSelectionStyleDefault;
             break;
         }
+        case SEC_TOOLS: {
+            cell.textLabel.text = @"App Data & Tools";
+            cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
+            cell.detailTextLabel.text = @"Version, size, caches, badge, rename…";
+            cell.detailTextLabel.textColor = HZTextMuted();
+            cell.detailTextLabel.font = [UIFont systemFontOfSize:12];
+            cell.imageView.image = [UIImage systemImageNamed:@"square.grid.2x2"];
+            cell.imageView.tintColor = HZAccent();
+            cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+            cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+            break;
+        }
         case SEC_ACTIONS: {
             cell.backgroundColor = UIColor.clearColor;
             UIButton *b = ip.row == 0
@@ -168,6 +184,11 @@ enum { SEC_ENABLE, SEC_DETAILS, SEC_ACTIONS, SEC_COUNT };
 
 - (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)ip {
     [tv deselectRowAtIndexPath:ip animated:YES];
+    if (ip.section == SEC_TOOLS) {
+        HZAppToolsViewController *t = [[HZAppToolsViewController alloc] initWithBundleId:self.bundleId name:self.appName];
+        [self.navigationController pushViewController:t animated:YES];
+        return;
+    }
     if (ip.section != SEC_DETAILS) return;
     NSArray<NSString *> *row = self.details[ip.row];
     UIPasteboard.generalPasteboard.string = row[1];

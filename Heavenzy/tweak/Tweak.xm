@@ -148,6 +148,86 @@ static int gEnabled = 0;
 }
 %end
 
+#pragma mark - SpringBoard: AppData-style icon renames + badge overrides
+
+// The Heavenzy control app can't touch SpringBoard's UI, so it records custom home-screen names and
+// badge counts in springboard.plist and pings us. These hooks are only %init'd inside SpringBoard
+// (see %ctor), and are plain Obj-C method swizzles — no inline C hooks — so they can't trigger the
+// ellekit/crash-reporter collision that plagued MGCopyAnswer.
+
+// Minimal private interfaces (resolved at runtime; never linked).
+@interface SBApplication : NSObject
+- (NSString *)bundleIdentifier;
+- (NSString *)displayName;
+@end
+@interface SBApplicationController : NSObject
++ (instancetype)sharedInstance;
+- (SBApplication *)applicationWithBundleIdentifier:(NSString *)bid;
+@end
+
+// Push every badge override in springboard.plist onto its SBApplication.
+static void HZApplyBadges(void) {
+    @try {
+        Class ctrlClass = NSClassFromString(@"SBApplicationController");
+        id ctrl = [ctrlClass respondsToSelector:@selector(sharedInstance)] ? [ctrlClass sharedInstance] : nil;
+        if (!ctrl) return;
+        NSDictionary<NSString *, NSNumber *> *badges = [HZConfig allBadges];
+        for (NSString *bid in badges) {
+            NSNumber *val = badges[bid];
+            if (![val isKindOfClass:NSNumber.class]) continue;
+            id app = [ctrl applicationWithBundleIdentifier:bid];
+            if (!app) continue;
+            if ([app respondsToSelector:@selector(setBadgeValue:)])
+                [app performSelector:@selector(setBadgeValue:) withObject:val];
+            else if ([app respondsToSelector:@selector(setBadge:)])
+                [app performSelector:@selector(setBadge:) withObject:(val.integerValue ? val.stringValue : nil)];
+            else if ([app respondsToSelector:@selector(setBadgeNumberOrString:)])
+                [app performSelector:@selector(setBadgeNumberOrString:) withObject:val];
+        }
+    } @catch (__unused NSException *e) {}
+}
+
+// Force visible icon labels to re-query displayName so a rename shows without a full respring.
+static void HZReloadIconLabels(void) {
+    @try {
+        for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+            if (![scene isKindOfClass:UIWindowScene.class]) continue;
+            for (UIWindow *w in ((UIWindowScene *)scene).windows) {
+                NSMutableArray<UIView *> *stack = [NSMutableArray arrayWithObject:w];
+                while (stack.count) {
+                    UIView *v = stack.lastObject; [stack removeLastObject];
+                    if ([v respondsToSelector:@selector(_updateLabel)]) [v performSelector:@selector(_updateLabel)];
+                    [stack addObjectsFromArray:v.subviews];
+                }
+            }
+        }
+    } @catch (__unused NSException *e) {}
+}
+
+%group SpringBoardHooks
+
+%hook SBApplication
+- (NSString *)displayName {
+    @try {
+        if ([self respondsToSelector:@selector(bundleIdentifier)]) {
+            NSString *custom = [HZConfig customNameForApp:[self bundleIdentifier]];
+            if (custom.length) return custom;
+        }
+    } @catch (__unused NSException *e) {}
+    return %orig;
+}
+%end
+
+%end   // SpringBoardHooks
+
+// Darwin callback: control app changed a name/badge → re-read and re-apply on the main thread.
+static void HZSpringBoardReload(CFNotificationCenterRef c, void *o, CFStringRef n, const void *obj, CFDictionaryRef ui) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        HZApplyBadges();
+        HZReloadIconLabels();
+    });
+}
+
 #pragma mark - SMS panel + re-show gesture (two-finger long-press on the key window)
 
 @interface GBGestureTarget : NSObject
@@ -200,20 +280,28 @@ static void GBInstallGesture(void) {
     @autoreleasepool {
         NSLog(@"[Heavenzy] Loading v1.0");
         NSString *bundleID = [[NSBundle mainBundle] bundleIdentifier];
-        // Never touch system processes (SpringBoard, Preferences, daemons using UIKit) or our own
-        // control app (which links UIKit and would otherwise match the filter).
-        if (!bundleID || [bundleID hasPrefix:@"com.apple."] || [bundleID isEqualToString:@"com.heavenzy.app"]) return;
 
-        // Clones built by the Heavenzy app are meant to be completely tweak-free (so Instagram/Meta
-        // can't detect Heavenzy inside them). If this process is a Heavenzy clone, do nothing at all:
-        // no %init, so no hooks/swizzles are installed, and no SMS/scraper panel or gesture. (Choicy,
-        // when installed, blocks the dylib from loading here entirely; this is the fallback for when
-        // it isn't.)
-        NSString *hzPlist = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Preferences/com.heavenzy.plist"];
-        if ([[NSDictionary dictionaryWithContentsOfFile:hzPlist][@"hzClone"] boolValue]) {
-            NSLog(@"[Heavenzy] Clone detected (%@) — staying inert.", bundleID);
+        // SpringBoard gets its own, separate set of hooks (AppData-style icon renames + badge counts).
+        // Nothing else here (identity spoofing / SMS panel) should run in SpringBoard.
+        if ([bundleID isEqualToString:@"com.apple.springboard"]) {
+            [HZConfig grantSandboxAccess];
+            %init(SpringBoardHooks);
+            // Apply any pending badges shortly after launch (once the icon model is up)…
+            for (NSNumber *delay in @[ @2.0, @5.0 ]) {
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay.doubleValue * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                    HZApplyBadges();
+                });
+            }
+            // …and re-apply whenever the control app pings us.
+            CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, HZSpringBoardReload,
+                                            CFSTR("com.heavenzy.springboard.reload"), NULL,
+                                            CFNotificationSuspensionBehaviorDeliverImmediately);
             return;
         }
+
+        // Never touch other system processes (Preferences, daemons using UIKit) or our own control
+        // app (which links UIKit and would otherwise match the filter).
+        if (!bundleID || [bundleID hasPrefix:@"com.apple."] || [bundleID isEqualToString:@"com.heavenzy.app"]) return;
 
         // Try to reach the central store too (only works if libSandy happens to be installed); the
         // primary path is the per-app config the control app writes straight into this container.

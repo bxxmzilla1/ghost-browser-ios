@@ -115,4 +115,65 @@
 + (BOOL)autoScan { return [[self smsField:@"autoScan"] isEqualToString:@"1"]; }
 + (void)setAutoScan:(BOOL)on { [self setSmsField:@"autoScan" value:on ? @"1" : @"0"]; }
 
+#pragma mark SpringBoard overrides (icon names + badges)
+
++ (NSString *)springboardPlistPath { return [[self directory] stringByAppendingPathComponent:@"springboard.plist"]; }
+
++ (NSMutableDictionary *)springboardRoot {
+    NSDictionary *d = [NSDictionary dictionaryWithContentsOfFile:[self springboardPlistPath]];
+    return [d isKindOfClass:NSDictionary.class] ? [d mutableCopy] : [NSMutableDictionary dictionary];
+}
+
++ (void)writeSpringboard:(NSDictionary *)root {
+    [[NSFileManager defaultManager] createDirectoryAtPath:[self directory]
+                              withIntermediateDirectories:YES attributes:nil error:nil];
+    [root writeToFile:[self springboardPlistPath] atomically:YES];
+}
+
++ (NSDictionary<NSString *, NSString *> *)allCustomNames {
+    id d = [self springboardRoot][@"names"];
+    return [d isKindOfClass:NSDictionary.class] ? d : @{};
+}
+
++ (NSDictionary<NSString *, NSNumber *> *)allBadges {
+    id d = [self springboardRoot][@"badges"];
+    return [d isKindOfClass:NSDictionary.class] ? d : @{};
+}
+
++ (NSString *)customNameForApp:(NSString *)bundleId {
+    if (bundleId.length == 0) return nil;
+    id v = [self allCustomNames][bundleId];
+    return [v isKindOfClass:NSString.class] && [v length] ? v : nil;
+}
+
++ (void)setCustomName:(NSString *)name forApp:(NSString *)bundleId {
+    if (bundleId.length == 0) return;
+    NSMutableDictionary *root = [self springboardRoot];
+    NSMutableDictionary *names = [[root[@"names"] isKindOfClass:NSDictionary.class] ? root[@"names"] : @{} mutableCopy];
+    NSString *trimmed = [name stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (trimmed.length) names[bundleId] = trimmed; else [names removeObjectForKey:bundleId];
+    root[@"names"] = names;
+    [self writeSpringboard:root];
+}
+
++ (NSNumber *)badgeForApp:(NSString *)bundleId {
+    if (bundleId.length == 0) return nil;
+    id v = [self allBadges][bundleId];
+    return [v isKindOfClass:NSNumber.class] ? v : nil;
+}
+
++ (void)setBadge:(NSNumber *)badge forApp:(NSString *)bundleId {
+    if (bundleId.length == 0) return;
+    NSMutableDictionary *root = [self springboardRoot];
+    NSMutableDictionary *badges = [[root[@"badges"] isKindOfClass:NSDictionary.class] ? root[@"badges"] : @{} mutableCopy];
+    if (badge) badges[bundleId] = badge; else [badges removeObjectForKey:bundleId];
+    root[@"badges"] = badges;
+    [self writeSpringboard:root];
+}
+
++ (void)notifySpringBoard {
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                         CFSTR("com.heavenzy.springboard.reload"), NULL, NULL, YES);
+}
+
 @end

@@ -29,9 +29,7 @@ static NSString *GBDigits(NSString *s) {
 @implementation GBSMS
 
 + (NSString *)appBrand {
-    // A browser host (GhostBrowser) tells us which site is being verified; otherwise use the app name.
-    NSString *name = [GBStore shared].smsBrand;
-    if (name.length == 0) name = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleDisplayName"];
+    NSString *name = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleDisplayName"];
     if (name.length == 0) name = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleName"];
     if (name.length == 0) name = [[NSBundle mainBundle] bundleIdentifier];
     NSMutableString *o = [NSMutableString string];

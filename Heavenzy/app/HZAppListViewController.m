@@ -12,7 +12,6 @@
 @property (nonatomic, strong) UIImageView *icon;
 @property (nonatomic, strong) UILabel *name;
 @property (nonatomic, strong) UILabel *subtitle;
-@property (nonatomic, strong) UISwitch *toggle;
 @end
 
 @implementation HZAppCell
@@ -31,12 +30,11 @@
         _subtitle.font = [UIFont systemFontOfSize:12 weight:UIFontWeightRegular];
         _subtitle.textColor = HZTextMuted();
         _subtitle.lineBreakMode = NSLineBreakByTruncatingMiddle;
-        _toggle = [UISwitch new];
-        _toggle.onTintColor = HZAccent();
+        self.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
 
         UIStackView *text = [[UIStackView alloc] initWithArrangedSubviews:@[ _name, _subtitle ]];
         text.axis = UILayoutConstraintAxisVertical; text.spacing = 2;
-        for (UIView *v in @[ _icon, text, _toggle ]) { v.translatesAutoresizingMaskIntoConstraints = NO; [self.contentView addSubview:v]; }
+        for (UIView *v in @[ _icon, text ]) { v.translatesAutoresizingMaskIntoConstraints = NO; [self.contentView addSubview:v]; }
         [NSLayoutConstraint activateConstraints:@[
             [_icon.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:16],
             [_icon.centerYAnchor constraintEqualToAnchor:self.contentView.centerYAnchor],
@@ -45,9 +43,7 @@
             [_icon.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-12],
             [text.leadingAnchor constraintEqualToAnchor:_icon.trailingAnchor constant:14],
             [text.centerYAnchor constraintEqualToAnchor:self.contentView.centerYAnchor],
-            [text.trailingAnchor constraintEqualToAnchor:_toggle.leadingAnchor constant:-12],
-            [_toggle.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-16],
-            [_toggle.centerYAnchor constraintEqualToAnchor:self.contentView.centerYAnchor],
+            [text.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-12],
         ]];
     }
     return self;
@@ -170,8 +166,8 @@
 }
 
 - (NSString *)tableView:(UITableView *)tv titleForFooterInSection:(NSInteger)s {
-    return @"Switch an app on, then open or relaunch it to apply. Tap a row for its identity, a fresh one, "
-           @"or to erase its data. Inside any app, hold two fingers to open the SMS panel.";
+    return @"Tap an app to spoof it, view or copy its identity, run the Spoof Chain, or open App Data & "
+           @"Tools. Inside any app, hold two fingers to open the SMS panel.";
 }
 
 - (void)tableView:(UITableView *)tv willDisplayHeaderView:(UIView *)v forSection:(NSInteger)s { HZStyleHeaderFooter(v); }
@@ -188,27 +184,7 @@
     cell.name.text = app[@"name"];
     cell.subtitle.text = enabled ? (identity ? HZIdentitySummary(identity) : @"Spoofing on") : bid;
     cell.subtitle.textColor = enabled ? HZAccent() : HZTextMuted();
-    cell.toggle.on = enabled;
-    cell.toggle.tag = ip.row;
-    [cell.toggle removeTarget:nil action:NULL forControlEvents:UIControlEventValueChanged];
-    [cell.toggle addTarget:self action:@selector(toggle:) forControlEvents:UIControlEventValueChanged];
     return cell;
-}
-
-- (void)toggle:(UISwitch *)sw {
-    NSInteger row = sw.tag;
-    if (row < 0 || row >= (NSInteger)self.rows.count) return;
-    NSString *bid = self.rows[row][@"id"];
-    if (sw.on && ![HZConfig identityForApp:bid]) {
-        [HZConfig setIdentity:HZGenerateIdentity() forApp:bid];   // roll one on first enable
-    }
-    [HZConfig setEnabled:sw.on forApp:bid];
-    // Push straight into the app's container so the tweak sees it without libSandy. Preserve the real
-    // queued-erase state (container truth) so we don't re-arm a wipe the tweak already ran.
-    [HZContainerSync writeForApp:bid identity:[HZConfig identityForApp:bid]
-                         enabled:sw.on wipePending:[HZContainerSync wipePendingForApp:bid]];
-    [self refreshHeader];
-    [self.tableView reloadRowsAtIndexPaths:@[ [NSIndexPath indexPathForRow:row inSection:0] ] withRowAnimation:UITableViewRowAnimationNone];
 }
 
 - (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)ip {

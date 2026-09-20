@@ -3,7 +3,7 @@
 #import "HZConfig.h"
 #import "HZContainerSync.h"
 
-typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionAuto, HZSectionNames, HZSectionProvider, HZSectionDiddy, HZSectionGrizzly, HZSectionCount };
+typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionAuto, HZSectionNames, HZSectionProvider, HZSectionDiddy, HZSectionGrizzly, HZSectionGrizzlyPool, HZSectionCount };
 
 @interface HZSettingsViewController () <UITextFieldDelegate, UITextViewDelegate>
 @property (nonatomic, strong) UITextField *diddyKeyField;
@@ -122,6 +122,7 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionAuto, HZSectionN
         case HZSectionProvider: return 2;
         case HZSectionDiddy:    return 1;
         case HZSectionGrizzly:  return 2;
+        case HZSectionGrizzlyPool: return 2;   // USA · USA (virtual)
     }
     return 0;
 }
@@ -134,6 +135,7 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionAuto, HZSectionN
         case HZSectionProvider: return @"PROVIDER";
         case HZSectionDiddy:    return @"DIDDYSMS";
         case HZSectionGrizzly:  return @"GRIZZLYSMS";
+        case HZSectionGrizzlyPool: return @"GRIZZLYSMS NUMBER POOL";
     }
     return nil;
 }
@@ -153,12 +155,16 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionAuto, HZSectionN
             return @"Scraper only. When set, Scan keeps just the accounts whose display-name first name "
                    @"(e.g. \"Sandy\" in \"Sandy Cimino\") is on this list. Leave empty to keep every username.";
         case HZSectionProvider:
-            return @"The service is detected from the app's name (Instagram → instagram / ig) and the country "
-                   @"is always USA.";
+            return @"The service is detected from the app's name (Instagram → instagram / ig) and numbers "
+                   @"are always US.";
         case HZSectionDiddy:
             return @"Bearer key from your DiddySMS dashboard. US numbers; carriers are tried automatically.";
         case HZSectionGrizzly:
             return @"API key from grizzlysms.com. Max price caps how much a single number may cost.";
+        case HZSectionGrizzlyPool:
+            return @"Which GrizzlySMS pool to buy from. USA (virtual) is the cheap high-stock pool shown as "
+                   @"\"USA (virtual)\" on grizzlysms.com; USA is real carrier numbers. If the chosen pool is "
+                   @"sold out, the other one is tried automatically.";
     }
     return nil;
 }
@@ -228,8 +234,27 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionAuto, HZSectionN
         BOOL isGrizzlyRow = ip.row == 1;
         BOOL selected = grizzly == isGrizzlyRow;
         cell.textLabel.text = isGrizzlyRow ? @"GrizzlySMS" : @"DiddySMS";
-        cell.detailTextLabel.text = isGrizzlyRow ? @"sms-activate protocol · country 187 (USA)" : @"api.diddysms.com · US carriers";
+        BOOL virt = [[HZConfig grizzlyCountry] isEqualToString:@"virtual"];
+        cell.detailTextLabel.text = isGrizzlyRow
+            ? (virt ? @"sms-activate protocol · USA (virtual) pool" : @"sms-activate protocol · USA pool")
+            : @"api.diddysms.com · US carriers";
         cell.imageView.image = [UIImage systemImageNamed:isGrizzlyRow ? @"pawprint.fill" : @"bolt.fill"];
+        cell.imageView.tintColor = selected ? HZAccent() : HZTextMuted();
+        UIImageSymbolConfiguration *c = [UIImageSymbolConfiguration configurationWithPointSize:20 weight:UIImageSymbolWeightSemibold];
+        UIImageView *check = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:selected ? @"checkmark.circle.fill" : @"circle" withConfiguration:c]];
+        check.tintColor = selected ? HZAccent() : HZTextMuted();
+        cell.accessoryView = check;
+        cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+        return cell;
+    }
+
+    if (ip.section == HZSectionGrizzlyPool) {
+        BOOL virt = [[HZConfig grizzlyCountry] isEqualToString:@"virtual"];
+        BOOL isVirtRow = ip.row == 1;
+        BOOL selected = virt == isVirtRow;
+        cell.textLabel.text = isVirtRow ? @"USA (virtual)" : @"USA";
+        cell.detailTextLabel.text = isVirtRow ? @"Country 12 · cheapest, large stock" : @"Country 187 · real carrier numbers";
+        cell.imageView.image = [UIImage systemImageNamed:isVirtRow ? @"cloud.fill" : @"antenna.radiowaves.left.and.right"];
         cell.imageView.tintColor = selected ? HZAccent() : HZTextMuted();
         UIImageSymbolConfiguration *c = [UIImageSymbolConfiguration configurationWithPointSize:20 weight:UIImageSymbolWeightSemibold];
         UIImageView *check = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:selected ? @"checkmark.circle.fill" : @"circle" withConfiguration:c]];
@@ -272,10 +297,18 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionAuto, HZSectionN
 }
 
 - (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)ip {
-    if (ip.section != HZSectionProvider) return;
-    [HZConfig setSmsProvider:ip.row == 1 ? @"grizzly" : @"diddy"];
+    if (ip.section == HZSectionProvider) {
+        [HZConfig setSmsProvider:ip.row == 1 ? @"grizzly" : @"diddy"];
+    } else if (ip.section == HZSectionGrizzlyPool) {
+        [HZConfig setGrizzlyCountry:ip.row == 1 ? @"virtual" : @"usa"];
+    } else {
+        return;
+    }
     [self pushToApps];
-    [tv reloadSections:[NSIndexSet indexSetWithIndex:HZSectionProvider] withRowAnimation:UITableViewRowAnimationNone];
+    // The provider row's subtitle mentions the pool, so refresh both sections together.
+    NSMutableIndexSet *secs = [NSMutableIndexSet indexSetWithIndex:HZSectionProvider];
+    [secs addIndex:HZSectionGrizzlyPool];
+    [tv reloadSections:secs withRowAnimation:UITableViewRowAnimationNone];
 }
 
 @end

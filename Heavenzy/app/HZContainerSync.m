@@ -40,6 +40,7 @@
     if (dk.length) d[@"diddyKey"]        = dk; else [d removeObjectForKey:@"diddyKey"];
     if (gk.length) d[@"grizzlyKey"]      = gk; else [d removeObjectForKey:@"grizzlyKey"];
     if (mp.length) d[@"grizzlyMaxPrice"] = mp; else [d removeObjectForKey:@"grizzlyMaxPrice"];
+    d[@"grizzlyCountry"] = [HZConfig grizzlyCountry];
 }
 
 + (NSInteger)writeSmsSettingsToAllApps {

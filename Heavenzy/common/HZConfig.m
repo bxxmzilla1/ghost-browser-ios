@@ -106,6 +106,9 @@
 + (void)setGrizzlyKey:(NSString *)key       { [self setSmsField:@"grizzlyKey" value:key]; }
 + (void)setGrizzlyMaxPrice:(NSString *)price{ [self setSmsField:@"grizzlyMaxPrice" value:price]; }
 
++ (NSString *)grizzlyCountry { return [[self smsField:@"grizzlyCountry"] isEqualToString:@"virtual"] ? @"virtual" : @"usa"; }
++ (void)setGrizzlyCountry:(NSString *)country { [self setSmsField:@"grizzlyCountry" value:[country isEqualToString:@"virtual"] ? @"virtual" : @"usa"]; }
+
 + (NSString *)panelMode { NSString *m = [self smsField:@"panelMode"]; return [m isEqualToString:@"scraper"] ? @"scraper" : @"sms"; }
 + (void)setPanelMode:(NSString *)mode { [self setSmsField:@"panelMode" value:[mode isEqualToString:@"scraper"] ? @"scraper" : @"sms"]; }
 

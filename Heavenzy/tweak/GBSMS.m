@@ -3,7 +3,10 @@
 
 static NSString *const kDiddyBase   = @"https://api.diddysms.com/v1";
 static NSString *const kGrizzlyBase = @"https://api.grizzlysms.com/stubs/handler_api.php";
-static NSString *const kUSACountry  = @"187";   // sms-activate numeric country id for the USA
+// sms-activate numeric country ids GrizzlySMS uses for its two US pools (same as Sessions X):
+//   187 = USA (real carrier numbers)     12 = USA (virtual) — cheaper, huge stock
+static NSString *const kUSACountry        = @"187";
+static NSString *const kUSAVirtualCountry = @"12";
 
 // Brand → GrizzlySMS (sms-activate) short service code — same table Sessions X uses.
 static NSDictionary *GBGrizzlyServiceMap(void) {
@@ -57,6 +60,16 @@ static NSString *GBDigits(NSString *s) {
     NSString *b = [self appBrand]; return b.length ? b : @"?";
 }
 
+// Which GrizzlySMS US pool the user picked in Settings ("virtual" → 12, anything else → 187).
++ (BOOL)grizzlyUsesVirtual { return [self useGrizzly] && [[GBStore shared].grizzlyCountry isEqualToString:@"virtual"]; }
++ (NSString *)grizzlyCountryCode { return [self grizzlyUsesVirtual] ? kUSAVirtualCountry : kUSACountry; }
++ (NSString *)grizzlyCountryName:(NSString *)code { return [code isEqualToString:kUSAVirtualCountry] ? @"USA (virtual)" : @"USA"; }
+
++ (NSString *)countryLabel {
+    if ([self useGrizzly]) return [self grizzlyCountryName:[self grizzlyCountryCode]];
+    return @"USA";
+}
+
 #pragma mark - HTTP helpers
 
 + (void)mainCompletion:(void (^)(id, id, id, id))block a:(id)a b:(id)b c:(id)c d:(id)d {
@@ -98,11 +111,21 @@ static NSString *GBDigits(NSString *s) {
     NSString *service = [self grizzlyServiceCode];
     if (service.length == 0) { [self mainCompletion:completion a:nil b:nil c:nil d:[NSString stringWithFormat:@"No GrizzlySMS service code for “%@”.", [self appBrand]]]; return; }
 
+    // Try the pool chosen in Settings first; if it's sold out, fall back to the other US pool
+    // (Sessions X does the same: 187 → 12, 12 → 187).
+    NSString *primary = [self grizzlyCountryCode];
+    NSString *other   = [primary isEqualToString:kUSAVirtualCountry] ? kUSACountry : kUSAVirtualCountry;
+    [self grizzlyGetNumber:key service:service countries:@[ primary, other ] index:0 completion:completion];
+}
+
++ (void)grizzlyGetNumber:(NSString *)key service:(NSString *)service countries:(NSArray<NSString *> *)countries
+                   index:(NSUInteger)idx completion:(void (^)(NSString *, NSString *, NSString *, NSString *))completion {
+    NSString *country = countries[idx];
     NSURLComponents *comp = [NSURLComponents componentsWithString:kGrizzlyBase];
     NSMutableArray *q = [@[ [NSURLQueryItem queryItemWithName:@"api_key" value:key],
                            [NSURLQueryItem queryItemWithName:@"action" value:@"getNumber"],
                            [NSURLQueryItem queryItemWithName:@"service" value:service],
-                           [NSURLQueryItem queryItemWithName:@"country" value:kUSACountry] ] mutableCopy];
+                           [NSURLQueryItem queryItemWithName:@"country" value:country] ] mutableCopy];
     NSString *maxPrice = [[GBStore shared].grizzlyMaxPrice stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     if (maxPrice.length) [q addObject:[NSURLQueryItem queryItemWithName:@"maxPrice" value:maxPrice]];
     comp.queryItems = q;
@@ -116,9 +139,18 @@ static NSString *GBDigits(NSString *s) {
             if (parts.count >= 3) {
                 NSString *orderId = parts[1];
                 NSString *phone = GBDigits(parts[2]);
+                NSLog(@"[Heavenzy][SMS] GrizzlySMS number %@ from %@%@", phone, [self grizzlyCountryName:country],
+                      idx ? @" (fallback pool)" : @"");
                 [self mainCompletion:completion a:phone b:orderId c:service d:nil];
                 return;
             }
+        }
+        // Sold out in this pool → try the next one before giving up.
+        if ([text isEqualToString:@"NO_NUMBERS"] && idx + 1 < countries.count) {
+            NSLog(@"[Heavenzy][SMS] GrizzlySMS %@ has no numbers — trying %@", [self grizzlyCountryName:country],
+                  [self grizzlyCountryName:countries[idx + 1]]);
+            [self grizzlyGetNumber:key service:service countries:countries index:idx + 1 completion:completion];
+            return;
         }
         [self mainCompletion:completion a:nil b:nil c:nil d:[NSString stringWithFormat:@"GrizzlySMS: %@", [self grizzlyMessage:text]]];
     }] resume];
@@ -127,7 +159,7 @@ static NSString *GBDigits(NSString *s) {
 + (NSString *)grizzlyMessage:(NSString *)resp {
     NSDictionary *m = @{ @"BAD_KEY": @"Invalid GrizzlySMS API key — check it in Settings.",
                          @"NO_BALANCE": @"GrizzlySMS balance is empty — top up your account.",
-                         @"NO_NUMBERS": @"No numbers available right now — try again.",
+                         @"NO_NUMBERS": @"No numbers available in either US pool right now — try again.",
                          @"BAD_SERVICE": @"Unknown service code for this app.",
                          @"SERVICE_UNAVAILABLE_REGION": @"GrizzlySMS is blocked from this IP/region.",
                          @"BAD_ACTION": @"Request rejected (bad action)." };

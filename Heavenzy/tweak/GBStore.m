@@ -73,6 +73,7 @@ static NSString *GBPrefsPath(void) {
     _diddyKey        = [d[@"diddyKey"] copy];
     _grizzlyKey      = [d[@"grizzlyKey"] copy];
     _grizzlyMaxPrice = [d[@"grizzlyMaxPrice"] copy];
+    _grizzlyCountry  = [d[@"grizzlyCountry"] isEqualToString:@"virtual"] ? @"virtual" : @"usa";
     _panelMode       = [d[@"panelMode"] isEqualToString:@"scraper"] ? @"scraper" : @"sms";
     _approvedNames   = [d[@"approvedNames"] copy];
     _autoScan        = [d[@"autoScan"] boolValue];
@@ -87,12 +88,14 @@ static NSString *GBPrefsPath(void) {
     if (![onDisk objectForKey:@"panelMode"])     _panelMode     = [[HZConfig panelMode] copy];
     if (![onDisk objectForKey:@"approvedNames"]) _approvedNames = [[HZConfig approvedNames] copy];
     if (![onDisk objectForKey:@"autoScan"])      _autoScan      = [HZConfig autoScan];
+    if (![onDisk objectForKey:@"grizzlyCountry"]) _grizzlyCountry = [[HZConfig grizzlyCountry] copy];
     if (_diddyKey.length || _grizzlyKey.length) return;
     NSString *dk = [HZConfig diddyKey], *gk = [HZConfig grizzlyKey];
     if (dk.length || gk.length) {
         _smsProvider = [[HZConfig smsProvider] copy] ?: @"diddy";
         _diddyKey = [dk copy]; _grizzlyKey = [gk copy];
         _grizzlyMaxPrice = [[HZConfig grizzlyMaxPrice] copy];
+        _grizzlyCountry  = [[HZConfig grizzlyCountry] copy];
     }
 }
 
@@ -163,6 +166,7 @@ static NSString *GBPrefsPath(void) {
     if (_diddyKey)        d[@"diddyKey"]        = _diddyKey;
     if (_grizzlyKey)      d[@"grizzlyKey"]      = _grizzlyKey;
     if (_grizzlyMaxPrice) d[@"grizzlyMaxPrice"] = _grizzlyMaxPrice;
+    if (_grizzlyCountry)  d[@"grizzlyCountry"]  = _grizzlyCountry;
     if (_panelMode)       d[@"panelMode"]       = _panelMode;
     if (_approvedNames.length) d[@"approvedNames"] = _approvedNames;
     d[@"autoScan"] = @(_autoScan);

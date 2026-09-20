@@ -44,6 +44,9 @@
 + (void)setGrizzlyKey:(NSString *)key;
 + (NSString *)grizzlyMaxPrice;
 + (void)setGrizzlyMaxPrice:(NSString *)price;
+/// GrizzlySMS US pool: "usa" (real carrier numbers, country 187) or "virtual" (USA virtual, country 12).
++ (NSString *)grizzlyCountry;
++ (void)setGrizzlyCountry:(NSString *)country;
 
 /// What the in-app panel shows: "sms" (number + code) or "scraper" (Instagram username scanner).
 + (NSString *)panelMode;

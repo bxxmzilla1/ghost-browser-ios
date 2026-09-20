@@ -302,7 +302,7 @@ static void GBInstallGesture(void) {
 
 %ctor {
     @autoreleasepool {
-        NSLog(@"[Heavenzy] Loading build 1.5.3 (DeviceCheck diagnostic logging)");
+        NSLog(@"[Heavenzy] Loading build 1.5.4");
         NSString *bundleID = [[NSBundle mainBundle] bundleIdentifier];
 
         // SpringBoard gets its own, separate set of hooks (AppData-style icon renames + badge counts).

@@ -354,7 +354,7 @@ static BOOL GBIsInstagramBundle(void) {
 }
 
 - (NSString *)serviceLine {
-    return [NSString stringWithFormat:@"%@ · %@ · USA", [GBSMS providerLabel], [GBSMS serviceLabel]];
+    return [NSString stringWithFormat:@"%@ · %@ · %@", [GBSMS providerLabel], [GBSMS serviceLabel], [GBSMS countryLabel]];
 }
 
 - (void)refreshServiceLine { self.serviceLabel.text = [self serviceLine]; }

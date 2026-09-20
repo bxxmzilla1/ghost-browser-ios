@@ -127,12 +127,21 @@ static int gEnabled = 0;
 // and fail token generation. The app then falls back to signals we already spoof (IDFV, keychain,
 // iCloud KV — all reset by wipe), and can't recognise the device as one it has seen.
 
+// DIAGNOSTIC: log every DeviceCheck / App Attest call so we can see whether the host app (e.g.
+// Instagram) actually uses these APIs during signup / SMS verification. Grep the device log for
+// "[Heavenzy][DeviceCheck]". If nothing appears while requesting an SMS code, DeviceCheck/App Attest
+// is NOT involved and can be ruled out as the reason codes don't arrive.
 %hook DCDevice
 - (BOOL)isSupported {
+    BOOL orig = %orig;
+    NSLog(@"[Heavenzy][DeviceCheck] DCDevice.isSupported called (real=%d, spoofing=%d → returning %d)",
+          orig, gEnabled, gEnabled ? 0 : orig);
     if (gEnabled) return NO;
-    return %orig;
+    return orig;
 }
 - (void)generateTokenWithCompletionHandler:(void (^)(NSData *, NSError *))completion {
+    NSLog(@"[Heavenzy][DeviceCheck] DCDevice.generateToken called (spoofing=%d → %@)",
+          gEnabled, gEnabled ? @"failing token" : @"passing through");
     if (gEnabled) {
         if (completion) completion(nil, [NSError errorWithDomain:@"com.apple.devicecheck.error" code:1 userInfo:nil]);
         return;
@@ -143,8 +152,23 @@ static int gEnabled = 0;
 
 %hook DCAppAttestService
 - (BOOL)isSupported {
+    BOOL orig = %orig;
+    NSLog(@"[Heavenzy][DeviceCheck] DCAppAttestService.isSupported called (real=%d, spoofing=%d → returning %d)",
+          orig, gEnabled, gEnabled ? 0 : orig);
     if (gEnabled) return NO;
-    return %orig;
+    return orig;
+}
+- (void)generateKeyWithCompletionHandler:(void (^)(NSString *, NSError *))completion {
+    NSLog(@"[Heavenzy][DeviceCheck] DCAppAttestService.generateKey called (spoofing=%d, pass-through)", gEnabled);
+    %orig;
+}
+- (void)attestKey:(NSString *)keyId clientDataHash:(NSData *)hash completionHandler:(void (^)(NSData *, NSError *))completion {
+    NSLog(@"[Heavenzy][DeviceCheck] DCAppAttestService.attestKey called (spoofing=%d, pass-through)", gEnabled);
+    %orig;
+}
+- (void)generateAssertion:(NSString *)keyId clientDataHash:(NSData *)hash completionHandler:(void (^)(NSData *, NSError *))completion {
+    NSLog(@"[Heavenzy][DeviceCheck] DCAppAttestService.generateAssertion called (spoofing=%d, pass-through)", gEnabled);
+    %orig;
 }
 %end
 

@@ -6,31 +6,14 @@
 + (NSString *)directory { return @"/var/mobile/Library/Preferences/Heavenzy"; }
 + (NSString *)appsPlistPath { return [[self directory] stringByAppendingPathComponent:@"apps.plist"]; }
 
-static int gHZSandyStatus = -1;   // -1 = libSandy not loaded, else libSandy_applyProfile's return (0 = success)
-
 + (void)grantSandboxAccess {
     // libSandy_applyProfile("Heavenzy") — resolved at runtime so a missing libSandy never breaks load.
     static dispatch_once_t once; dispatch_once(&once, ^{
         void *h = dlopen("/var/jb/usr/lib/libSandy.dylib", RTLD_LAZY) ?: dlopen("libSandy.dylib", RTLD_LAZY);
-        if (!h) { NSLog(@"[Heavenzy][libSandy] libSandy.dylib not found — cross-sandbox access unavailable"); return; }
+        if (!h) return;
         int (*applyProfile)(const char *) = (int (*)(const char *))dlsym(h, "libSandy_applyProfile");
-        if (!applyProfile) return;
-        gHZSandyStatus = applyProfile("Heavenzy");
-        // 0 = success, 1 = XPC failure (sandyd not reachable), 2 = restricted (profile missing/denied)
-        NSLog(@"[Heavenzy][libSandy] applyProfile(\"Heavenzy\") → %d (%@)", gHZSandyStatus,
-              gHZSandyStatus == 0 ? @"granted" : gHZSandyStatus == 1 ? @"sandyd unreachable" : @"profile not found or not allowed");
+        if (applyProfile) applyProfile("Heavenzy");
     });
-}
-
-+ (BOOL)sandboxAccessGranted { return gHZSandyStatus == 0; }
-
-+ (NSString *)sandboxAccessDescription {
-    switch (gHZSandyStatus) {
-        case 0:  return @"granted";
-        case 1:  return @"libSandy daemon (sandyd) not reachable";
-        case 2:  return @"libSandy profile missing or not allowed";
-        default: return @"libSandy not installed";
-    }
 }
 
 + (NSDictionary *)all {
@@ -194,110 +177,6 @@ static int gHZSandyStatus = -1;   // -1 = libSandy not loaded, else libSandy_app
 + (void)notifySpringBoard {
     CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
                                          CFSTR("com.heavenzy.springboard.reload"), NULL, NULL, YES);
-}
-
-#pragma mark Container snapshots
-
-+ (NSString *)containersRoot { return [[self directory] stringByAppendingPathComponent:@"Containers"]; }
-
-+ (NSString *)snapshotsDirForApp:(NSString *)bundleId {
-    if (bundleId.length == 0) return nil;
-    return [[self containersRoot] stringByAppendingPathComponent:bundleId];
-}
-
-+ (NSString *)sanitizeSnapshotName:(NSString *)name {
-    NSString *trimmed = [name stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-    if (trimmed.length == 0) return nil;
-    NSCharacterSet *bad = [NSCharacterSet characterSetWithCharactersInString:@"/\\:*?\"<>|"];
-    NSString *safe = [[trimmed componentsSeparatedByCharactersInSet:bad] componentsJoinedByString:@"-"];
-    if ([safe hasPrefix:@"."]) safe = [@"_" stringByAppendingString:safe];   // no hidden dirs
-    return safe.length ? [safe substringToIndex:MIN(safe.length, 60u)] : nil;
-}
-
-+ (unsigned long long)sizeOfDir:(NSString *)path {
-    NSFileManager *fm = [NSFileManager defaultManager];
-    NSDirectoryEnumerator *en = [fm enumeratorAtPath:path];
-    unsigned long long total = 0;
-    while ([en nextObject]) total += [en.fileAttributes fileSize];
-    return total;
-}
-
-+ (NSArray<NSDictionary *> *)snapshotsForApp:(NSString *)bundleId {
-    NSString *dir = [self snapshotsDirForApp:bundleId];
-    if (!dir) return @[];
-    NSFileManager *fm = [NSFileManager defaultManager];
-    NSMutableArray *out = [NSMutableArray array];
-    for (NSString *name in [fm contentsOfDirectoryAtPath:dir error:nil]) {
-        NSString *path = [dir stringByAppendingPathComponent:name];
-        BOOL isDir = NO;
-        if (![fm fileExistsAtPath:path isDirectory:&isDir] || !isDir) continue;
-        NSDictionary *meta = [NSDictionary dictionaryWithContentsOfFile:[path stringByAppendingPathComponent:@"meta.plist"]] ?: @{};
-        NSMutableDictionary *e = [NSMutableDictionary dictionary];
-        e[@"name"]    = meta[@"name"] ?: name;
-        e[@"path"]    = path;
-        if (meta[@"date"])    e[@"date"]    = meta[@"date"];
-        if (meta[@"version"]) e[@"version"] = meta[@"version"];
-        if (meta[@"build"])   e[@"build"]   = meta[@"build"];
-        e[@"bytes"] = @([self sizeOfDir:path]);
-        [out addObject:e];
-    }
-    [out sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
-        NSDate *da = a[@"date"], *db = b[@"date"];
-        if (da && db) return [db compare:da];   // newest first
-        return [a[@"name"] localizedCaseInsensitiveCompare:b[@"name"]];
-    }];
-    return out;
-}
-
-+ (BOOL)deleteSnapshotNamed:(NSString *)name forApp:(NSString *)bundleId {
-    NSString *dir = [self snapshotsDirForApp:bundleId];
-    NSString *safe = [self sanitizeSnapshotName:name];
-    if (!dir || !safe) return NO;
-    return [[NSFileManager defaultManager] removeItemAtPath:[dir stringByAppendingPathComponent:safe] error:nil];
-}
-
-+ (BOOL)renameSnapshotNamed:(NSString *)name to:(NSString *)newName forApp:(NSString *)bundleId {
-    NSString *dir = [self snapshotsDirForApp:bundleId];
-    NSString *from = [self sanitizeSnapshotName:name];
-    NSString *to   = [self sanitizeSnapshotName:newName];
-    if (!dir || !from || !to || [from isEqualToString:to]) return NO;
-    NSString *fromPath = [dir stringByAppendingPathComponent:from];
-    NSString *toPath   = [dir stringByAppendingPathComponent:to];
-    NSFileManager *fm = [NSFileManager defaultManager];
-    if ([fm fileExistsAtPath:toPath]) return NO;
-    if (![fm moveItemAtPath:fromPath toPath:toPath error:nil]) return NO;
-    // Keep the display name in meta.plist in sync with the folder.
-    NSString *metaPath = [toPath stringByAppendingPathComponent:@"meta.plist"];
-    NSMutableDictionary *meta = [[NSDictionary dictionaryWithContentsOfFile:metaPath] mutableCopy] ?: [NSMutableDictionary dictionary];
-    meta[@"name"] = to;
-    [meta writeToFile:metaPath atomically:YES];
-    return YES;
-}
-
-+ (void)setSnapshotEntry:(NSString *)key value:(NSString *)value forApp:(NSString *)bundleId {
-    if (bundleId.length == 0) return;
-    NSMutableDictionary *cfg = [[self all] mutableCopy];
-    NSMutableDictionary *e = [self mutableEntry:bundleId in:cfg];
-    // Save and load are mutually exclusive.
-    [e removeObjectForKey:@"snapSave"];
-    [e removeObjectForKey:@"snapLoad"];
-    if (value.length) e[key] = value;
-    [self write:cfg];
-}
-
-+ (NSString *)snapshotSavePendingForApp:(NSString *)bundleId {
-    id v = [self entryForApp:bundleId][@"snapSave"];
-    return [v isKindOfClass:NSString.class] ? v : nil;
-}
-+ (void)setSnapshotSavePending:(NSString *)name forApp:(NSString *)bundleId {
-    [self setSnapshotEntry:@"snapSave" value:name forApp:bundleId];
-}
-+ (NSString *)snapshotLoadPendingForApp:(NSString *)bundleId {
-    id v = [self entryForApp:bundleId][@"snapLoad"];
-    return [v isKindOfClass:NSString.class] ? v : nil;
-}
-+ (void)setSnapshotLoadPending:(NSString *)name forApp:(NSString *)bundleId {
-    [self setSnapshotEntry:@"snapLoad" value:name forApp:bundleId];
 }
 
 @end

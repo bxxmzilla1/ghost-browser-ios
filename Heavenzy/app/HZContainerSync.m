@@ -70,29 +70,6 @@
     return [d[@"wipePending"] boolValue];
 }
 
-+ (BOOL)queueSnapshotSave:(NSString *)saveName load:(NSString *)loadName forApp:(NSString *)bundleId {
-    NSString *path = [self plistPathForApp:bundleId];
-    if (!path) return NO;   // app never launched → no container yet
-    NSMutableDictionary *d = [[NSDictionary dictionaryWithContentsOfFile:path] mutableCopy] ?: [NSMutableDictionary dictionary];
-    [d removeObjectForKey:@"snapSave"];
-    [d removeObjectForKey:@"snapLoad"];
-    [d removeObjectForKey:@"snapLastError"];   // a new request (or a cancel) clears the old failure
-    if (saveName.length) d[@"snapSave"] = saveName;
-    else if (loadName.length) d[@"snapLoad"] = loadName;
-    return [d writeToFile:path atomically:YES];
-}
-
-+ (NSDictionary *)snapshotStateForApp:(NSString *)bundleId {
-    NSURL *container = [self dataContainerForApp:bundleId];
-    if (!container) return @{};
-    NSString *path = [container.path stringByAppendingPathComponent:@"Library/Preferences/com.heavenzy.plist"];
-    NSDictionary *d = [NSDictionary dictionaryWithContentsOfFile:path];
-    NSMutableDictionary *out = [NSMutableDictionary dictionary];
-    for (NSString *k in @[ @"snapSave", @"snapLoad", @"snapLastError" ])
-        if ([d[k] isKindOfClass:NSString.class] && [d[k] length]) out[k] = d[k];
-    return out;
-}
-
 + (BOOL)writeForApp:(NSString *)bundleId
            identity:(NSDictionary *)identity
             enabled:(BOOL)enabled

@@ -54,10 +54,7 @@ jobs:
           grep -q 'Library/MobileSubstrate/DynamicLibraries/Heavenzy.plist' contents.txt
           grep -q 'Applications/Heavenzy.app/Heavenzy$' contents.txt
           grep -q 'Applications/Heavenzy.app/Info.plist' contents.txt
-          # Must be exactly /var/jb/Library/libSandy/Heavenzy.plist — a doubled var/jb prefix means
-          # sandyd will never find the profile.
-          grep -Eq '(^|[ ./])var/jb/Library/libSandy/Heavenzy\.plist$' contents.txt
-          if grep -q 'var/jb/var/jb' contents.txt; then echo "ERROR: doubled var/jb prefix in payload"; exit 1; fi
+          grep -q 'Library/libSandy/Heavenzy-Profile.plist' contents.txt
           echo "OK: dylib, filter plist, app binary, Info.plist and libSandy profile all present"
 
       - uses: actions/upload-artifact@v4

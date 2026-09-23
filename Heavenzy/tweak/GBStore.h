@@ -21,6 +21,8 @@
 /// save/restore on next launch, then clears the flag. nil = nothing queued.
 @property (nonatomic, copy) NSString *snapshotSavePending;   // save current login under this name
 @property (nonatomic, copy) NSString *snapshotLoadPending;   // restore this saved snapshot
+/// Why the last snapshot op failed (shown by the control app). Cleared when a new op is queued.
+@property (nonatomic, copy) NSString *snapshotLastError;
 
 // Spoofed hardware the app sees (all mutually consistent, picked together from the device pool).
 @property (nonatomic, copy) NSString *deviceModel;     // hw.machine, e.g. "iPhone16,1"

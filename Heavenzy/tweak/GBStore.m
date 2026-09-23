@@ -23,6 +23,7 @@ static NSString *GBPrefsPath(void) {
     _wipePending   = [d[@"wipePending"] boolValue];
     _snapshotSavePending = [d[@"snapSave"] copy];
     _snapshotLoadPending = [d[@"snapLoad"] copy];
+    _snapshotLastError   = [d[@"snapLastError"] copy];
     _deviceModel   = [d[@"deviceModel"] copy];
     _marketingName = [d[@"marketingName"] copy];
     _systemVersion = [d[@"systemVersion"] copy];
@@ -138,6 +139,7 @@ static NSString *GBPrefsPath(void) {
     if (_wipePending)   d[@"wipePending"]   = @YES;
     if (_snapshotSavePending.length) d[@"snapSave"] = _snapshotSavePending;
     if (_snapshotLoadPending.length) d[@"snapLoad"] = _snapshotLoadPending;
+    if (_snapshotLastError.length)   d[@"snapLastError"] = _snapshotLastError;
     if (_deviceModel)   d[@"deviceModel"]   = _deviceModel;
     if (_marketingName) d[@"marketingName"] = _marketingName;
     if (_systemVersion) d[@"systemVersion"] = _systemVersion;

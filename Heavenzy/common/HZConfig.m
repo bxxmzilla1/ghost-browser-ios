@@ -6,14 +6,31 @@
 + (NSString *)directory { return @"/var/mobile/Library/Preferences/Heavenzy"; }
 + (NSString *)appsPlistPath { return [[self directory] stringByAppendingPathComponent:@"apps.plist"]; }
 
+static int gHZSandyStatus = -1;   // -1 = libSandy not loaded, else libSandy_applyProfile's return (0 = success)
+
 + (void)grantSandboxAccess {
     // libSandy_applyProfile("Heavenzy") — resolved at runtime so a missing libSandy never breaks load.
     static dispatch_once_t once; dispatch_once(&once, ^{
         void *h = dlopen("/var/jb/usr/lib/libSandy.dylib", RTLD_LAZY) ?: dlopen("libSandy.dylib", RTLD_LAZY);
-        if (!h) return;
+        if (!h) { NSLog(@"[Heavenzy][libSandy] libSandy.dylib not found — cross-sandbox access unavailable"); return; }
         int (*applyProfile)(const char *) = (int (*)(const char *))dlsym(h, "libSandy_applyProfile");
-        if (applyProfile) applyProfile("Heavenzy");
+        if (!applyProfile) return;
+        gHZSandyStatus = applyProfile("Heavenzy");
+        // 0 = success, 1 = XPC failure (sandyd not reachable), 2 = restricted (profile missing/denied)
+        NSLog(@"[Heavenzy][libSandy] applyProfile(\"Heavenzy\") → %d (%@)", gHZSandyStatus,
+              gHZSandyStatus == 0 ? @"granted" : gHZSandyStatus == 1 ? @"sandyd unreachable" : @"profile not found or not allowed");
     });
+}
+
++ (BOOL)sandboxAccessGranted { return gHZSandyStatus == 0; }
+
++ (NSString *)sandboxAccessDescription {
+    switch (gHZSandyStatus) {
+        case 0:  return @"granted";
+        case 1:  return @"libSandy daemon (sandyd) not reachable";
+        case 2:  return @"libSandy profile missing or not allowed";
+        default: return @"libSandy not installed";
+    }
 }
 
 + (NSDictionary *)all {

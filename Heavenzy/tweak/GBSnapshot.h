@@ -11,12 +11,13 @@
 @interface GBSnapshot : NSObject
 
 /// Capture the current logged-in state into a snapshot folder named `name`. Overwrites a snapshot of
-/// the same name. Returns NO if the store dir is unreachable (libSandy missing) or the copy failed.
-+ (BOOL)saveSnapshotNamed:(NSString *)name;
+/// the same name. Returns nil on success, or a short human-readable reason on failure (e.g. the
+/// store dir is unreachable because libSandy isn't working).
++ (NSString *)saveSnapshotNamed:(NSString *)name;
 
 /// Restore a snapshot: wipe the current state, copy the snapshot's files + group containers back,
 /// re-import its keychain items, and return the saved identity dict (so the caller can re-apply it to
-/// GBStore). Returns nil if the snapshot is missing or the restore failed.
-+ (NSDictionary *)loadSnapshotNamed:(NSString *)name;
+/// GBStore). On failure returns nil and sets *error to a short reason; nothing is wiped in that case.
++ (NSDictionary *)loadSnapshotNamed:(NSString *)name error:(NSString **)error;
 
 @end

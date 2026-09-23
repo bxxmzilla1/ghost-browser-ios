@@ -219,12 +219,30 @@ static NSDictionary *GBCurrentIdentity(void) {
 
 @implementation GBSnapshot
 
-+ (BOOL)saveSnapshotNamed:(NSString *)name {
+// Can this process actually create files in the shared snapshot store? Probe once, with a real write.
+static NSString *GBStoreProbe(NSString *dir) {
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSError *err = nil;
+    if (![fm createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:&err] && ![fm fileExistsAtPath:dir]) {
+        return [NSString stringWithFormat:@"can't create snapshot folder (%@; sandbox access %@)",
+                err.localizedDescription ?: @"unknown", [HZConfig sandboxAccessDescription]];
+    }
+    NSString *probe = [dir stringByAppendingPathComponent:@".probe"];
+    if (![@"ok" writeToFile:probe atomically:YES encoding:NSUTF8StringEncoding error:&err]) {
+        return [NSString stringWithFormat:@"snapshot store not writable (%@; sandbox access %@)",
+                err.localizedDescription ?: @"unknown", [HZConfig sandboxAccessDescription]];
+    }
+    [fm removeItemAtPath:probe error:nil];
+    return nil;
+}
+
++ (NSString *)saveSnapshotNamed:(NSString *)name {
     NSString *dir = GBSnapshotDir(name);
-    if (!dir) { NSLog(@"[Heavenzy][Snapshot] save: no store dir (libSandy missing?)"); return NO; }
+    if (!dir) return @"invalid snapshot name";
     NSFileManager *fm = [NSFileManager defaultManager];
     [fm removeItemAtPath:dir error:nil];
-    GBEnsureDir(dir);
+    NSString *probeErr = GBStoreProbe(dir);
+    if (probeErr) { NSLog(@"[Heavenzy][Snapshot] save failed: %@", probeErr); [fm removeItemAtPath:dir error:nil]; return probeErr; }
 
     NSString *home = GBHome();
     NSString *dataDst = [dir stringByAppendingPathComponent:@"data"];
@@ -261,17 +279,29 @@ static NSDictionary *GBCurrentIdentity(void) {
                             @"build":   [mb objectForInfoDictionaryKey:@"CFBundleVersion"] ?: @"",
                             @"schema":  @1,
                             @"keychainItems": @(kc.count) };
-    [meta writeToFile:[dir stringByAppendingPathComponent:@"meta.plist"] atomically:YES];
+    if (![meta writeToFile:[dir stringByAppendingPathComponent:@"meta.plist"] atomically:YES]) {
+        NSLog(@"[Heavenzy][Snapshot] save failed: couldn't write meta.plist");
+        [fm removeItemAtPath:dir error:nil];
+        return @"couldn't finish writing the snapshot";
+    }
 
     NSLog(@"[Heavenzy][Snapshot] saved \"%@\" (%lu keychain items) for %@", name,
           (unsigned long)kc.count, [mb bundleIdentifier]);
-    return YES;
+    return nil;
 }
 
-+ (NSDictionary *)loadSnapshotNamed:(NSString *)name {
++ (NSDictionary *)loadSnapshotNamed:(NSString *)name error:(NSString **)error {
     NSString *dir = GBSnapshotDir(name);
     NSFileManager *fm = [NSFileManager defaultManager];
-    if (!dir || ![fm fileExistsAtPath:dir]) { NSLog(@"[Heavenzy][Snapshot] load: \"%@\" not found", name); return nil; }
+    // Check the snapshot is readable *before* wiping anything.
+    if (!dir || ![fm fileExistsAtPath:[dir stringByAppendingPathComponent:@"meta.plist"]]) {
+        NSString *why = [fm fileExistsAtPath:[HZConfig containersRoot]]
+            ? [NSString stringWithFormat:@"snapshot \"%@\" not found", name]
+            : [NSString stringWithFormat:@"snapshot store unreachable (sandbox access %@)", [HZConfig sandboxAccessDescription]];
+        NSLog(@"[Heavenzy][Snapshot] load failed: %@", why);
+        if (error) *error = why;
+        return nil;
+    }
 
     NSString *home = GBHome();
 

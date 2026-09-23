@@ -303,7 +303,7 @@ static void GBInstallGesture(void) {
 
 %ctor {
     @autoreleasepool {
-        NSLog(@"[Heavenzy] Loading build 1.6.0");
+        NSLog(@"[Heavenzy] Loading build 1.6.1");
         NSString *bundleID = [[NSBundle mainBundle] bundleIdentifier];
 
         // SpringBoard gets its own, separate set of hooks (AppData-style icon renames + badge counts).
@@ -334,27 +334,37 @@ static void GBInstallGesture(void) {
 
         GBStore *store = [GBStore shared];
 
-        // Container snapshots (save / restore a logged-in state) run before anything else, and a load
-        // takes priority over an erase (a load does its own wipe first).
+        // Container snapshots (save / restore a logged-in state) run before anything else.
+        //   • A queued *save* captures the current state, then any queued erase still runs in this same
+        //     launch (so Spoof Chain + save never leaves old data behind with a new identity).
+        //   • A queued *load* replaces the erase (it wipes first, then restores).
+        // Both consume their flag from this app's container (always readable); the central copy is
+        // cleared too when libSandy access works. Failures are written back for the control app to show.
+        BOOL loaded = NO;
         if (store.snapshotLoadPending.length) {
-            NSString *snap = store.snapshotLoadPending;
-            NSDictionary *identity = [GBSnapshot loadSnapshotNamed:snap];   // wipes + restores files + keychain
+            NSString *snap = store.snapshotLoadPending, *err = nil;
+            NSDictionary *identity = [GBSnapshot loadSnapshotNamed:snap error:&err];   // wipes + restores files + keychain
             store.snapshotLoadPending = nil;
-            store.wipePending = NO;                      // the load already wiped
-            if ([identity isKindOfClass:NSDictionary.class] && identity.count) [store applyIdentityDict:identity];
-            store.enabled = YES;
+            store.snapshotLastError = err;
+            if (identity) {
+                loaded = YES;
+                store.wipePending = NO;                  // the load already wiped
+                if (identity.count) [store applyIdentityDict:identity];
+                store.enabled = YES;
+            }
             [store save];                                // clearAppData nuked our plist — rewrite it
             [HZConfig setSnapshotLoadPending:nil forApp:bundleID];
-            [HZConfig setWipePending:NO forApp:bundleID];
+            if (loaded) [HZConfig setWipePending:NO forApp:bundleID];
         } else if (store.snapshotSavePending.length) {
-            [GBSnapshot saveSnapshotNamed:store.snapshotSavePending];
+            NSString *err = [GBSnapshot saveSnapshotNamed:store.snapshotSavePending];
             store.snapshotSavePending = nil;
+            store.snapshotLastError = err;
             [store save];
             [HZConfig setSnapshotSavePending:nil forApp:bundleID];
         }
         // Honour an "Erase App Data" request queued by the Heavenzy control app — either written into
         // this app's own container (store.wipePending) or in the central plist (libSandy).
-        else if (store.wipePending || [HZConfig wipePendingForApp:bundleID]) {
+        if (!loaded && (store.wipePending || [HZConfig wipePendingForApp:bundleID])) {
             [GBMenu clearAppData];               // deletes our container plist too…
             store.wipePending = NO;
             [store save];                        // …so rewrite it (keeps identity + enabled)

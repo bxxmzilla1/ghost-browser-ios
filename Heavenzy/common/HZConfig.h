@@ -16,6 +16,9 @@
 /// libSandy: grant this (sandboxed) process access to the central directory. No-op / harmless when
 /// libSandy is missing or already granted. Call once early in the tweak.
 + (void)grantSandboxAccess;
+/// Whether grantSandboxAccess actually succeeded in this process (libSandy present + profile applied).
++ (BOOL)sandboxAccessGranted;
++ (NSString *)sandboxAccessDescription;   // human-readable reason when not granted
 
 /// Whole config, or a single app's entry ({ enabled, identity }).
 + (NSDictionary *)all;

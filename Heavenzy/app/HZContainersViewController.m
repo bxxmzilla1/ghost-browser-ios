@@ -5,6 +5,7 @@
 
 typedef NS_ENUM(NSInteger, HZContainersSection) {
     HZContainersPending,   // (only shown when a save/restore is queued)
+    HZContainersError,     // (only shown when the last op failed)
     HZContainersSave,      // "Save current login" button
     HZContainersList,      // saved snapshots
     HZContainersCount
@@ -16,6 +17,7 @@ typedef NS_ENUM(NSInteger, HZContainersSection) {
 @property (nonatomic, copy) NSArray<NSDictionary *> *snapshots;   // from HZConfig
 @property (nonatomic, copy) NSString *pendingSave;
 @property (nonatomic, copy) NSString *pendingLoad;
+@property (nonatomic, copy) NSString *lastError;
 @end
 
 @implementation HZContainersViewController
@@ -41,9 +43,22 @@ typedef NS_ENUM(NSInteger, HZContainersSection) {
 
 - (void)reload {
     self.snapshots = [HZConfig snapshotsForApp:self.bundleId];
-    self.pendingSave = [HZConfig snapshotSavePendingForApp:self.bundleId];
-    self.pendingLoad = [HZConfig snapshotLoadPendingForApp:self.bundleId];
+    // The app's own container is the source of truth: the tweak clears the flag there the moment it
+    // runs. The central copy can lag behind when libSandy isn't working, so never trust it alone —
+    // if the container says nothing is queued, also clear the stale central flag.
+    NSDictionary *state = [HZContainerSync snapshotStateForApp:self.bundleId];
+    self.pendingSave = state[@"snapSave"];
+    self.pendingLoad = state[@"snapLoad"];
+    self.lastError   = state[@"snapLastError"];
+    if (!self.pendingSave && [HZConfig snapshotSavePendingForApp:self.bundleId]) [HZConfig setSnapshotSavePending:nil forApp:self.bundleId];
+    if (!self.pendingLoad && [HZConfig snapshotLoadPendingForApp:self.bundleId]) [HZConfig setSnapshotLoadPending:nil forApp:self.bundleId];
     [self.tableView reloadData];
+}
+
+- (void)cancelPending {
+    [HZConfig setSnapshotSavePending:nil forApp:self.bundleId];
+    [HZContainerSync queueSnapshotSave:nil load:nil forApp:self.bundleId];
+    [self reload];
 }
 
 - (BOOL)hasPending { return self.pendingSave.length || self.pendingLoad.length; }
@@ -73,6 +88,7 @@ typedef NS_ENUM(NSInteger, HZContainersSection) {
 - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)s {
     switch (s) {
         case HZContainersPending: return [self hasPending] ? 1 : 0;
+        case HZContainersError:   return (self.lastError.length && ![self hasPending]) ? 1 : 0;
         case HZContainersSave:    return 1;
         case HZContainersList:    return self.snapshots.count;
     }
@@ -85,6 +101,12 @@ typedef NS_ENUM(NSInteger, HZContainersSection) {
 }
 
 - (NSString *)tableView:(UITableView *)tv titleForFooterInSection:(NSInteger)s {
+    if (s == HZContainersPending && [self hasPending])
+        return @"Tap to cancel. A queued save doesn't change anything in the app; it's captured — and cleared — "
+               @"the moment the app next launches.";
+    if (s == HZContainersError && self.lastError.length && ![self hasPending])
+        return @"The tweak ran but couldn't complete the last request. If it mentions libSandy, make sure the "
+               @"libSandy package is installed and reboot once, then try again.";
     if (s == HZContainersSave)
         return @"Saves the current account exactly as it is now — files, cookies and keychain — plus the "
                @"spoofed identity it runs on. The save finishes the next time you open the app.";
@@ -119,6 +141,21 @@ typedef NS_ENUM(NSInteger, HZContainersSection) {
             : [NSString stringWithFormat:@"Open %@ to finish restoring \"%@\".", self.appName, self.pendingLoad];
         cell.imageView.image = [UIImage systemImageNamed:@"clock.arrow.circlepath"];
         cell.imageView.tintColor = HZAccent();
+        UIImageView *x = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"xmark.circle.fill"]];
+        x.tintColor = HZTextMuted();
+        cell.accessoryView = x;
+        cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+        return cell;
+    }
+
+    if (ip.section == HZContainersError) {
+        cell.textLabel.text = @"Last request failed";
+        cell.textLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightSemibold];
+        cell.textLabel.textColor = HZDanger();
+        cell.detailTextLabel.numberOfLines = 0;
+        cell.detailTextLabel.text = self.lastError;
+        cell.imageView.image = [UIImage systemImageNamed:@"exclamationmark.triangle.fill"];
+        cell.imageView.tintColor = HZDanger();
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
         return cell;
     }
@@ -147,6 +184,7 @@ typedef NS_ENUM(NSInteger, HZContainersSection) {
 
 - (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)ip {
     [tv deselectRowAtIndexPath:ip animated:YES];
+    if (ip.section == HZContainersPending) { [self confirmCancel]; return; }
     if (ip.section == HZContainersSave) { [self promptSave]; return; }
     if (ip.section == HZContainersList) { [self confirmLoad:self.snapshots[ip.row][@"name"]]; return; }
 }
@@ -165,6 +203,17 @@ typedef NS_ENUM(NSInteger, HZContainersSection) {
 }
 
 #pragma mark - Actions
+
+- (void)confirmCancel {
+    BOOL saving = self.pendingSave.length > 0;
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:saving ? @"Cancel Queued Save?" : @"Cancel Queued Restore?"
+        message:saving ? @"The current login won't be saved." : @"The current state of the app will be left as is."
+        preferredStyle:UIAlertControllerStyleAlert];
+    [a addAction:[UIAlertAction actionWithTitle:@"Keep" style:UIAlertActionStyleCancel handler:nil]];
+    [a addAction:[UIAlertAction actionWithTitle:@"Cancel Request" style:UIAlertActionStyleDestructive
+        handler:^(__unused UIAlertAction *x) { [self cancelPending]; }]];
+    [self presentViewController:a animated:YES completion:nil];
+}
 
 - (void)promptSave {
     NSDateFormatter *f = [NSDateFormatter new]; f.dateFormat = @"MMM d, h:mm a";

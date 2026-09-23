@@ -201,7 +201,7 @@
     NSFileManager *fm = [NSFileManager defaultManager];
     NSDirectoryEnumerator *en = [fm enumeratorAtPath:path];
     unsigned long long total = 0;
-    for (NSString *sub in en) total += [en.fileAttributes fileSize];
+    while ([en nextObject]) total += [en.fileAttributes fileSize];
     return total;
 }
 

@@ -179,4 +179,108 @@
                                          CFSTR("com.heavenzy.springboard.reload"), NULL, NULL, YES);
 }
 
+#pragma mark Container snapshots
+
++ (NSString *)containersRoot { return [[self directory] stringByAppendingPathComponent:@"Containers"]; }
+
++ (NSString *)snapshotsDirForApp:(NSString *)bundleId {
+    if (bundleId.length == 0) return nil;
+    return [[self containersRoot] stringByAppendingPathComponent:bundleId];
+}
+
++ (NSString *)sanitizeSnapshotName:(NSString *)name {
+    NSString *trimmed = [name stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (trimmed.length == 0) return nil;
+    NSCharacterSet *bad = [NSCharacterSet characterSetWithCharactersInString:@"/\\:*?\"<>|"];
+    NSString *safe = [[trimmed componentsSeparatedByCharactersInSet:bad] componentsJoinedByString:@"-"];
+    if ([safe hasPrefix:@"."]) safe = [@"_" stringByAppendingString:safe];   // no hidden dirs
+    return safe.length ? [safe substringToIndex:MIN(safe.length, 60u)] : nil;
+}
+
++ (unsigned long long)sizeOfDir:(NSString *)path {
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSDirectoryEnumerator *en = [fm enumeratorAtPath:path];
+    unsigned long long total = 0;
+    for (NSString *sub in en) total += [en.fileAttributes fileSize];
+    return total;
+}
+
++ (NSArray<NSDictionary *> *)snapshotsForApp:(NSString *)bundleId {
+    NSString *dir = [self snapshotsDirForApp:bundleId];
+    if (!dir) return @[];
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSMutableArray *out = [NSMutableArray array];
+    for (NSString *name in [fm contentsOfDirectoryAtPath:dir error:nil]) {
+        NSString *path = [dir stringByAppendingPathComponent:name];
+        BOOL isDir = NO;
+        if (![fm fileExistsAtPath:path isDirectory:&isDir] || !isDir) continue;
+        NSDictionary *meta = [NSDictionary dictionaryWithContentsOfFile:[path stringByAppendingPathComponent:@"meta.plist"]] ?: @{};
+        NSMutableDictionary *e = [NSMutableDictionary dictionary];
+        e[@"name"]    = meta[@"name"] ?: name;
+        e[@"path"]    = path;
+        if (meta[@"date"])    e[@"date"]    = meta[@"date"];
+        if (meta[@"version"]) e[@"version"] = meta[@"version"];
+        if (meta[@"build"])   e[@"build"]   = meta[@"build"];
+        e[@"bytes"] = @([self sizeOfDir:path]);
+        [out addObject:e];
+    }
+    [out sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
+        NSDate *da = a[@"date"], *db = b[@"date"];
+        if (da && db) return [db compare:da];   // newest first
+        return [a[@"name"] localizedCaseInsensitiveCompare:b[@"name"]];
+    }];
+    return out;
+}
+
++ (BOOL)deleteSnapshotNamed:(NSString *)name forApp:(NSString *)bundleId {
+    NSString *dir = [self snapshotsDirForApp:bundleId];
+    NSString *safe = [self sanitizeSnapshotName:name];
+    if (!dir || !safe) return NO;
+    return [[NSFileManager defaultManager] removeItemAtPath:[dir stringByAppendingPathComponent:safe] error:nil];
+}
+
++ (BOOL)renameSnapshotNamed:(NSString *)name to:(NSString *)newName forApp:(NSString *)bundleId {
+    NSString *dir = [self snapshotsDirForApp:bundleId];
+    NSString *from = [self sanitizeSnapshotName:name];
+    NSString *to   = [self sanitizeSnapshotName:newName];
+    if (!dir || !from || !to || [from isEqualToString:to]) return NO;
+    NSString *fromPath = [dir stringByAppendingPathComponent:from];
+    NSString *toPath   = [dir stringByAppendingPathComponent:to];
+    NSFileManager *fm = [NSFileManager defaultManager];
+    if ([fm fileExistsAtPath:toPath]) return NO;
+    if (![fm moveItemAtPath:fromPath toPath:toPath error:nil]) return NO;
+    // Keep the display name in meta.plist in sync with the folder.
+    NSString *metaPath = [toPath stringByAppendingPathComponent:@"meta.plist"];
+    NSMutableDictionary *meta = [[NSDictionary dictionaryWithContentsOfFile:metaPath] mutableCopy] ?: [NSMutableDictionary dictionary];
+    meta[@"name"] = to;
+    [meta writeToFile:metaPath atomically:YES];
+    return YES;
+}
+
++ (void)setSnapshotEntry:(NSString *)key value:(NSString *)value forApp:(NSString *)bundleId {
+    if (bundleId.length == 0) return;
+    NSMutableDictionary *cfg = [[self all] mutableCopy];
+    NSMutableDictionary *e = [self mutableEntry:bundleId in:cfg];
+    // Save and load are mutually exclusive.
+    [e removeObjectForKey:@"snapSave"];
+    [e removeObjectForKey:@"snapLoad"];
+    if (value.length) e[key] = value;
+    [self write:cfg];
+}
+
++ (NSString *)snapshotSavePendingForApp:(NSString *)bundleId {
+    id v = [self entryForApp:bundleId][@"snapSave"];
+    return [v isKindOfClass:NSString.class] ? v : nil;
+}
++ (void)setSnapshotSavePending:(NSString *)name forApp:(NSString *)bundleId {
+    [self setSnapshotEntry:@"snapSave" value:name forApp:bundleId];
+}
++ (NSString *)snapshotLoadPendingForApp:(NSString *)bundleId {
+    id v = [self entryForApp:bundleId][@"snapLoad"];
+    return [v isKindOfClass:NSString.class] ? v : nil;
+}
++ (void)setSnapshotLoadPending:(NSString *)name forApp:(NSString *)bundleId {
+    [self setSnapshotEntry:@"snapLoad" value:name forApp:bundleId];
+}
+
 @end

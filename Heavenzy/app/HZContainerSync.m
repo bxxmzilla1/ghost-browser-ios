@@ -70,6 +70,17 @@
     return [d[@"wipePending"] boolValue];
 }
 
++ (BOOL)queueSnapshotSave:(NSString *)saveName load:(NSString *)loadName forApp:(NSString *)bundleId {
+    NSString *path = [self plistPathForApp:bundleId];
+    if (!path) return NO;   // app never launched → no container yet
+    NSMutableDictionary *d = [[NSDictionary dictionaryWithContentsOfFile:path] mutableCopy] ?: [NSMutableDictionary dictionary];
+    [d removeObjectForKey:@"snapSave"];
+    [d removeObjectForKey:@"snapLoad"];
+    if (saveName.length) d[@"snapSave"] = saveName;
+    else if (loadName.length) d[@"snapLoad"] = loadName;
+    return [d writeToFile:path atomically:YES];
+}
+
 + (BOOL)writeForApp:(NSString *)bundleId
            identity:(NSDictionary *)identity
             enabled:(BOOL)enabled

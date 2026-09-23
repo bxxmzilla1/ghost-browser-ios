@@ -5,6 +5,7 @@
 #import "GBStore.h"
 #import "GBMenu.h"
 #import "GBOverlay.h"
+#import "GBSnapshot.h"
 #import "HZConfig.h"
 
 // Heavenzy keeps the REAL iPhone (model, screen, CPU, RAM, iOS, carrier, time zone are all left
@@ -302,7 +303,7 @@ static void GBInstallGesture(void) {
 
 %ctor {
     @autoreleasepool {
-        NSLog(@"[Heavenzy] Loading build 1.5.4");
+        NSLog(@"[Heavenzy] Loading build 1.6.0");
         NSString *bundleID = [[NSBundle mainBundle] bundleIdentifier];
 
         // SpringBoard gets its own, separate set of hooks (AppData-style icon renames + badge counts).
@@ -333,9 +334,27 @@ static void GBInstallGesture(void) {
 
         GBStore *store = [GBStore shared];
 
+        // Container snapshots (save / restore a logged-in state) run before anything else, and a load
+        // takes priority over an erase (a load does its own wipe first).
+        if (store.snapshotLoadPending.length) {
+            NSString *snap = store.snapshotLoadPending;
+            NSDictionary *identity = [GBSnapshot loadSnapshotNamed:snap];   // wipes + restores files + keychain
+            store.snapshotLoadPending = nil;
+            store.wipePending = NO;                      // the load already wiped
+            if ([identity isKindOfClass:NSDictionary.class] && identity.count) [store applyIdentityDict:identity];
+            store.enabled = YES;
+            [store save];                                // clearAppData nuked our plist — rewrite it
+            [HZConfig setSnapshotLoadPending:nil forApp:bundleID];
+            [HZConfig setWipePending:NO forApp:bundleID];
+        } else if (store.snapshotSavePending.length) {
+            [GBSnapshot saveSnapshotNamed:store.snapshotSavePending];
+            store.snapshotSavePending = nil;
+            [store save];
+            [HZConfig setSnapshotSavePending:nil forApp:bundleID];
+        }
         // Honour an "Erase App Data" request queued by the Heavenzy control app — either written into
         // this app's own container (store.wipePending) or in the central plist (libSandy).
-        if (store.wipePending || [HZConfig wipePendingForApp:bundleID]) {
+        else if (store.wipePending || [HZConfig wipePendingForApp:bundleID]) {
             [GBMenu clearAppData];               // deletes our container plist too…
             store.wipePending = NO;
             [store save];                        // …so rewrite it (keeps identity + enabled)

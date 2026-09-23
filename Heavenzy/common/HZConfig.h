@@ -81,4 +81,32 @@
 /// Tell the SpringBoard side (tweak) to re-read springboard.plist and re-apply names + badges.
 + (void)notifySpringBoard;
 
+#pragma mark - Container snapshots (save / restore a logged-in state)
+
+/// Saved app states live outside every app's own container (so a wipe can't delete them):
+///   /var/mobile/Library/Preferences/Heavenzy/Containers/<bundleId>/<snapshot>/
+///     data/      → the app's Library (minus Caches) + Documents
+///     groups/    → each shared app-group container (minus Caches)
+///     keychain.plist  → the app's keychain items (the part a plain folder-copy misses)
+///     identity.plist  → the Heavenzy device identity active when it was saved
+///     meta.plist      → { name, date, appShortVersion, appBuild, schema }
+/// The control app manages the list here; the tweak does the in-app save/restore (files + keychain).
++ (NSString *)containersRoot;                          // …/Heavenzy/Containers
++ (NSString *)snapshotsDirForApp:(NSString *)bundleId; // …/Containers/<bundleId>
+
+/// Metadata for every saved snapshot of an app, newest first. Each entry:
+///   { name, path, date (NSDate|nil), version, build, bytes (NSNumber) }
++ (NSArray<NSDictionary *> *)snapshotsForApp:(NSString *)bundleId;
++ (BOOL)deleteSnapshotNamed:(NSString *)name forApp:(NSString *)bundleId;
++ (BOOL)renameSnapshotNamed:(NSString *)name to:(NSString *)newName forApp:(NSString *)bundleId;
+/// A filesystem-safe folder name for a user-typed snapshot title.
++ (NSString *)sanitizeSnapshotName:(NSString *)name;
+
+/// Queue a save/restore for the next launch of the app (the tweak performs it, then clears the flag).
+/// Only one op can be pending at a time; queuing one clears the other. Pass nil to clear.
++ (NSString *)snapshotSavePendingForApp:(NSString *)bundleId;
++ (void)setSnapshotSavePending:(NSString *)name forApp:(NSString *)bundleId;
++ (NSString *)snapshotLoadPendingForApp:(NSString *)bundleId;
++ (void)setSnapshotLoadPending:(NSString *)name forApp:(NSString *)bundleId;
+
 @end

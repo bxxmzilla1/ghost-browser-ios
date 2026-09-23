@@ -1,0 +1,66 @@
+name: tweak-x
+
+# "Heavenzy X" — the iPhone X build. Separate copy of Heavenzy/ (HeavenzyX/) so changes needed for
+# the X never touch the iPhone 8 build. Produces com.heavenzy.x_<version>_<arch>.deb.
+
+on:
+  push:
+    paths:
+      - 'HeavenzyX/**'
+      - '.github/workflows/tweak-x.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          brew install ldid dpkg make
+          echo "$(brew --prefix make)/libexec/gnubin" >> "$GITHUB_PATH"
+
+      - name: Set up Theos
+        run: |
+          export THEOS=$HOME/theos
+          echo "THEOS=$THEOS" >> "$GITHUB_ENV"
+          git clone --quiet --recursive https://github.com/theos/theos.git "$THEOS"
+
+      - name: Fetch iOS SDK (sparse)
+        run: |
+          set -e
+          rm -rf "$THEOS/sdks"
+          git clone -n --depth=1 --filter=tree:0 https://github.com/theos/sdks.git "$THEOS/sdks"
+          cd "$THEOS/sdks"
+          git sparse-checkout set --no-cone iPhoneOS16.5.sdk
+          git checkout
+          ls -1 "$THEOS/sdks"
+
+      - name: Build .deb
+        run: |
+          cd HeavenzyX
+          make package FINALPACKAGE=1
+
+      - name: Collect package
+        run: |
+          mkdir -p out
+          cp HeavenzyX/packages/*.deb out/
+          ls -la out
+
+      - name: Verify package contents (tweak dylib + control app)
+        run: |
+          set -e
+          deb=$(ls out/*.deb | head -n1)
+          dpkg -c "$deb" | tee contents.txt
+          grep -q 'Library/MobileSubstrate/DynamicLibraries/Heavenzy.dylib' contents.txt
+          grep -q 'Library/MobileSubstrate/DynamicLibraries/Heavenzy.plist' contents.txt
+          grep -q 'Applications/Heavenzy.app/Heavenzy$' contents.txt
+          grep -q 'Applications/Heavenzy.app/Info.plist' contents.txt
+          echo "OK: dylib, filter plist, app binary and Info.plist all present"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HeavenzyX-deb
+          path: out/*.deb
+          if-no-files-found: error

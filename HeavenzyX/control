@@ -1,0 +1,11 @@
+Package: com.heavenzy.x
+Name: Heavenzy X
+Version: 1.5.4
+Architecture: iphoneos-arm64
+Conflicts: com.heavenzy.tweak
+Replaces: com.heavenzy.tweak
+Description: iPhone X build of Heavenzy (same features as the iPhone 8 build). Per-app device identity reset (Blaze-style): keeps your real iPhone model but resets serial, UDID, IDFV, IDFA, Wi-Fi/Bluetooth MAC and IMEI, plus a wipe + re-spoof that clears saved accounts and blocks iCloud restore, so an app sees a brand-new phone with a first-time install. Hold two fingers on any app to open the draggable Heavenzy SMS panel (touches pass through around it) to order a USA number via DiddySMS or GrizzlySMS and show the verification code; the service is detected from the app name. For GrizzlySMS, Settings lets you pick the number pool: USA (real carrier numbers) or the cheaper USA (virtual) pool, with automatic fallback to the other pool when one is sold out. Configure apps and SMS API keys in the Heavenzy app. Settings has a Panel Mode switch: SMS mode, or Username Scraper mode which turns the panel into an Instagram username scanner (Scan, scroll, scan again, Copy). An optional Approved Names list keeps only accounts whose display-name first name matches, and Auto scan taps Scan every second so you just scroll. Close the panel with its X. Each app also has an App Data & Tools screen (AppData-style): view version, build, sizes and containers, open the bundle/data/group folders in Filza, copy the bundle id, clear caches, reset data, reset permissions, offload, or open the App Store page, plus rename the home-screen icon and set a badge count (applied by the SpringBoard hook).
+Maintainer: Heavenzy
+Author: Heavenzy
+Section: Tweaks
+Depends: ellekit

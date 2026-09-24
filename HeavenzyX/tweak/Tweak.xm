@@ -303,7 +303,7 @@ static void GBInstallGesture(void) {
 
 %ctor {
     @autoreleasepool {
-        NSLog(@"[Heavenzy] Loading build 1.6.1");
+        NSLog(@"[Heavenzy] Loading build 1.7.2");
         NSString *bundleID = [[NSBundle mainBundle] bundleIdentifier];
 
         // SpringBoard gets its own, separate set of hooks (AppData-style icon renames + badge counts).
@@ -333,6 +333,14 @@ static void GBInstallGesture(void) {
         [HZConfig grantSandboxAccess];
 
         GBStore *store = [GBStore shared];
+
+        // Account gate: nothing below runs unless the Heavenzy control app is signed in to a Heavenzy
+        // account. The app stamps the signed-in user id into every app's config (and removes it on
+        // sign-out), so with no account there's no spoofing, no panel, no snapshots — just the stock app.
+        if (!store.accountId.length) {
+            NSLog(@"[Heavenzy] No Heavenzy account signed in — inactive in %@ (sign in from the Heavenzy app)", bundleID);
+            return;
+        }
 
         // Container snapshots (save / restore a logged-in state) run before anything else.
         //   • A queued *save* captures the current state, then any queued erase still runs in this same

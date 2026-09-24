@@ -63,6 +63,7 @@
 @property (nonatomic, copy) NSString *grizzlyKey;
 @property (nonatomic, copy) NSString *grizzlyMaxPrice;
 @property (nonatomic, copy) NSString *grizzlyCountry;   // GrizzlySMS US pool: "usa" (187) or "virtual" (12)
+@property (nonatomic, copy) NSString *accountId;        // Heavenzy account (Supabase user id) the control app is signed in as; nil → tweak inactive
 @property (nonatomic, copy) NSString *panelMode;        // "sms" | "scraper" — what the panel shows
 @property (nonatomic, copy) NSString *approvedNames;    // scraper first-name filter (raw, one per line)
 @property (nonatomic, assign) BOOL autoScan;           // auto-tap Scan every second in scraper mode

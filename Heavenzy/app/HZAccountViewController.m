@@ -26,8 +26,9 @@ typedef NS_ENUM(NSInteger, HZAccountSection) {
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.title = @"Account";
+    self.title = self.gateMode ? @"Heavenzy" : @"Account";
     self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
+    self.navigationItem.hidesBackButton = self.gateMode;
     self.view.backgroundColor = HZBG();
     HZStyleTable(self.tableView);
     self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
@@ -50,10 +51,13 @@ typedef NS_ENUM(NSInteger, HZAccountSection) {
     [super viewDidLayoutSubviews];
     if (!self.tableView.tableHeaderView || self.tableView.tableHeaderView.frame.size.width != self.tableView.bounds.size.width) {
         UIImageSymbolConfiguration *c = [UIImageSymbolConfiguration configurationWithPointSize:56 weight:UIImageSymbolWeightMedium];
-        UIImage *img = [[UIImage systemImageNamed:@"icloud.and.arrow.up.fill" withConfiguration:c]
+        UIImage *img = [[UIImage systemImageNamed:self.gateMode ? @"lock.shield.fill" : @"icloud.and.arrow.up.fill" withConfiguration:c]
                         imageWithTintColor:HZAccent() renderingMode:UIImageRenderingModeAlwaysOriginal];
-        self.tableView.tableHeaderView = HZHeroHeader(self.tableView.bounds.size.width, img, YES, @"Your Account",
-            @"Keep every saved login in your own Supabase project instead of on this iPhone, and restore them on any phone you sign in on.", nil);
+        self.tableView.tableHeaderView = self.gateMode
+            ? HZHeroHeader(self.tableView.bounds.size.width, img, YES, @"Sign in to continue",
+                @"Heavenzy needs an account. Identity spoofing, the SMS panel and Saved Logins stay off in every app until you sign in here.", nil)
+            : HZHeroHeader(self.tableView.bounds.size.width, img, YES, @"Your Account",
+                @"Keep every saved login in your own Supabase project instead of on this iPhone, and restore them on any phone you sign in on.", nil);
     }
 }
 
@@ -204,6 +208,11 @@ typedef NS_ENUM(NSInteger, HZAccountSection) {
             cell.detailTextLabel.text = self.statusLine ?: @"Checking your account…";
             cell.imageView.image = [UIImage systemImageNamed:@"checkmark.icloud.fill"];
             cell.imageView.tintColor = HZSuccess();
+        } else if (self.gateMode) {
+            cell.textLabel.text = @"Account required";
+            cell.detailTextLabel.text = @"Sign in with your Heavenzy account, or create one, to unlock the app and the tweak on this iPhone.";
+            cell.imageView.image = [UIImage systemImageNamed:@"lock.fill"];
+            cell.imageView.tintColor = HZAccent();
         } else {
             cell.textLabel.text = @"Not signed in";
             cell.detailTextLabel.text = cloud.configured
@@ -276,7 +285,7 @@ typedef NS_ENUM(NSInteger, HZAccountSection) {
 
 - (void)signOut {
     UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Sign Out?"
-        message:@"Saved logins already in your account stay there. New saves will be kept on this iPhone until you sign in again."
+        message:@"Saved logins already in your account stay there. Heavenzy switches off in every app (no spoofing, no panel) and this app locks until you sign in again."
         preferredStyle:UIAlertControllerStyleAlert];
     [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [a addAction:[UIAlertAction actionWithTitle:@"Sign Out" style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *x) {

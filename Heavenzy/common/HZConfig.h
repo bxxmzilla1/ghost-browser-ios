@@ -94,6 +94,10 @@
 + (void)setCloudURL:(NSString *)url;
 + (NSString *)cloudAnonKey;
 + (void)setCloudAnonKey:(NSString *)key;
+/// User id of the account the control app is signed in as (nil when signed out). The control app also
+/// stamps this into every app's container config as `accountId`; the tweak stays inactive without it.
++ (NSString *)cloudAccountId;
++ (void)setCloudAccountId:(NSString *)userId;
 
 #pragma mark - Container snapshots (save / restore a logged-in state)
 

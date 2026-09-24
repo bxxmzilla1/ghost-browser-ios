@@ -29,6 +29,9 @@ extern NSString *const HZCloudSessionDidChangeNotification;
              completion:(void (^)(BOOL needsConfirm, NSError *error))completion;
 - (void)signInWithEmail:(NSString *)email password:(NSString *)password completion:(void (^)(NSError *error))completion;
 - (void)signOut:(void (^)(void))completion;
+/// Round-trip to the auth server. If the account was deleted/revoked the session is cleared (and
+/// HZCloudSessionDidChangeNotification posted); a plain network failure leaves it signed in.
+- (void)validateSession:(void (^)(BOOL valid, NSError *error))completion;
 
 #pragma mark Containers
 /// Rows for one app (or every app when bundleId is nil), newest first.

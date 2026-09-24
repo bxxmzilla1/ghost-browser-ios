@@ -86,14 +86,27 @@ static void HZMain(dispatch_block_t b) { if (NSThread.isMainThread) b(); else di
     if (self.userId) d[@"userId"] = self.userId;
     [[NSUserDefaults standardUserDefaults] setObject:d forKey:kSessionKey];
     [[NSUserDefaults standardUserDefaults] synchronize];
-    HZMain(^{ [[NSNotificationCenter defaultCenter] postNotificationName:HZCloudSessionDidChangeNotification object:self]; });
+    BOOL changed = ![[HZConfig cloudAccountId] isEqualToString:self.userId ?: @""];
+    [HZConfig setCloudAccountId:self.userId];
+    // Only announce sign-in / account switches — a silent token refresh shouldn't reload UI.
+    if (changed) HZMain(^{ [[NSNotificationCenter defaultCenter] postNotificationName:HZCloudSessionDidChangeNotification object:self]; });
 }
 
 - (void)clearSession {
     self.accessToken = nil; self.refreshToken = nil; self.expiresAt = 0; self.email = nil; self.userId = nil;
     [[NSUserDefaults standardUserDefaults] removeObjectForKey:kSessionKey];
     [[NSUserDefaults standardUserDefaults] synchronize];
+    [HZConfig setCloudAccountId:nil];
     HZMain(^{ [[NSNotificationCenter defaultCenter] postNotificationName:HZCloudSessionDidChangeNotification object:self]; });
+}
+
+- (void)validateSession:(void (^)(BOOL valid, NSError *error))completion {
+    if (!self.signedIn) { HZMain(^{ completion(NO, HZCloudError(401, @"Not signed in.")); }); return; }
+    self.expiresAt = 0;   // force a real round-trip to the auth server
+    [self withFreshToken:^(NSError *err) {
+        // A revoked / deleted account clears the session inside withFreshToken; a network error keeps it.
+        HZMain(^{ completion(err == nil, err); });
+    }];
 }
 
 #pragma mark - HTTP plumbing

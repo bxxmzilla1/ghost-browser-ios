@@ -41,6 +41,9 @@
     if (gk.length) d[@"grizzlyKey"]      = gk; else [d removeObjectForKey:@"grizzlyKey"];
     if (mp.length) d[@"grizzlyMaxPrice"] = mp; else [d removeObjectForKey:@"grizzlyMaxPrice"];
     d[@"grizzlyCountry"] = [HZConfig grizzlyCountry];
+    // Account gate for the tweak: present only while the control app is signed in.
+    NSString *acct = [HZConfig cloudAccountId];
+    if (acct.length) d[@"accountId"] = acct; else [d removeObjectForKey:@"accountId"];
 }
 
 + (NSInteger)writeSmsSettingsToAllApps {

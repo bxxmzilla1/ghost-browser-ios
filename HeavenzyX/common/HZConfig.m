@@ -226,6 +226,8 @@ static NSString *const HZDefaultCloudAnonKey = @"eyJhbGciOiJIUzI1NiIsInR5cCI6Ikp
     return k.length ? k : HZDefaultCloudAnonKey;
 }
 + (void)setCloudAnonKey:(NSString *)key { [self setCloudField:@"anonKey" value:key]; }
++ (NSString *)cloudAccountId { id v = [self cloudField:@"accountId"]; return [v isKindOfClass:NSString.class] && [v length] ? v : nil; }
++ (void)setCloudAccountId:(NSString *)userId { [self setCloudField:@"accountId" value:userId]; }
 
 #pragma mark Container snapshots
 

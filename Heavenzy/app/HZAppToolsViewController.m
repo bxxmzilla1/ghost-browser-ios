@@ -148,24 +148,16 @@ typedef NS_ENUM(NSInteger, HZToolsSection) {
 - (NSString *)tableView:(UITableView *)tv titleForHeaderInSection:(NSInteger)s {
     switch (s) {
         case HZToolsInfo:       return @"INFO";
-        case HZToolsIdentifier: return @"BUNDLE IDENTIFIER  ·  TAP TO COPY";
+        case HZToolsIdentifier: return @"BUNDLE ID";
         case HZToolsHome:       return @"HOME SCREEN";
-        case HZToolsContainers: return self.containerRows.count ? @"CONTAINERS  ·  OPENS IN FILZA" : nil;
+        case HZToolsContainers: return self.containerRows.count ? @"FILZA" : nil;
         case HZToolsActions:    return @"TOOLS";
     }
     return nil;
 }
 
 - (NSString *)tableView:(UITableView *)tv titleForFooterInSection:(NSInteger)s {
-    switch (s) {
-        case HZToolsHome:
-            return @"Rename the icon or set a badge, then tap Apply. Badges apply right away; a rename may "
-                   @"need a respring to show. Clear the field and Apply to restore the real value.";
-        case HZToolsActions:
-            return @"Clear Cache frees space safely. Reset Data wipes the app's Library, Documents and tmp "
-                   @"(like a fresh install). Reset Permissions and Offload are best-effort and may need the "
-                   @"app closed first.";
-    }
+    if (s == HZToolsHome) return @"Empty + Apply restores the original.";
     return nil;
 }
 
@@ -246,7 +238,7 @@ typedef NS_ENUM(NSInteger, HZToolsSection) {
     [tv deselectRowAtIndexPath:ip animated:YES];
     if (ip.section == HZToolsIdentifier) {
         UIPasteboard.generalPasteboard.string = self.bundleId;
-        [self flash:@"Bundle identifier copied"];
+        [self flash:@"Copied"];
     } else if (ip.section == HZToolsContainers) {
         NSURL *url = self.containerRows[ip.row][@"url"];
         if (![self.data openContainerInFilza:url])
@@ -277,7 +269,7 @@ typedef NS_ENUM(NSInteger, HZToolsSection) {
     [HZConfig setBadge:badge forApp:self.bundleId];
 
     [HZConfig notifySpringBoard];
-    [self flash:@"Applied  ·  respring if the name didn't change"];
+    [self flash:@"Applied"];
 }
 
 - (BOOL)textFieldShouldReturn:(UITextField *)tf { [tf resignFirstResponder]; return YES; }
@@ -290,10 +282,10 @@ typedef NS_ENUM(NSInteger, HZToolsSection) {
         return;
     }
     NSString *msg;
-    if ([key isEqualToString:@"cache"])        msg = @"Delete this app's caches and temporary files?";
-    else if ([key isEqualToString:@"data"])    msg = @"Wipe this app's Library, Documents and tmp? This is like a fresh install and can't be undone.";
-    else if ([key isEqualToString:@"perms"])   msg = @"Reset this app's privacy permissions (photos, camera, location, etc.)?";
-    else if ([key isEqualToString:@"offload"]) msg = @"Offload this app? The app is removed but its data is kept; tap its icon to reinstall.";
+    if ([key isEqualToString:@"cache"])        msg = nil;
+    else if ([key isEqualToString:@"data"])    msg = @"Like a fresh install. Can't be undone.";
+    else if ([key isEqualToString:@"perms"])   msg = nil;
+    else if ([key isEqualToString:@"offload"]) msg = @"Data is kept.";
     else return;
 
     UIAlertController *a = [UIAlertController alertControllerWithTitle:title message:msg

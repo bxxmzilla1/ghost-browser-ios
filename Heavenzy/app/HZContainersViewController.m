@@ -267,14 +267,12 @@ static NSDate *HZParseISO(id v) {
     NSString *line = [bits componentsJoinedByString:@"  ·  "];
     if (![self cloudOn]) return line;
 
-    NSString *status;
-    if ([self.uploading isEqualToString:it.name])        status = [NSString stringWithFormat:@"Uploading to your account… %.0f%%", self.transferFraction * 100];
-    else if ([self.downloading isEqualToString:it.name]) status = [NSString stringWithFormat:@"Downloading… %.0f%%", self.transferFraction * 100];
-    else if (it.cloud && !it.local)                      status = @"In your account";
-    else if (it.cloud && it.local)                       status = [self.pendingLoad isEqualToString:it.name] ? @"In your account · ready to restore" : @"In your account · copy on this iPhone";
-    else if (self.cloudRows)                             status = [self isBusyWith:it.name] ? @"On this iPhone" : @"On this iPhone · waiting to upload";
-    else                                                 status = @"On this iPhone";
-    return line.length ? [NSString stringWithFormat:@"%@\n%@", line, status] : status;
+    NSString *status = nil;
+    if ([self.uploading isEqualToString:it.name])        status = [NSString stringWithFormat:@"Uploading %.0f%%", self.transferFraction * 100];
+    else if ([self.downloading isEqualToString:it.name]) status = [NSString stringWithFormat:@"Downloading %.0f%%", self.transferFraction * 100];
+    else if (!it.cloud && self.cloudRows && ![self isBusyWith:it.name]) status = @"Waiting to upload";
+    if (!status) return line;   // the cloud icon already says it's in your account
+    return line.length ? [NSString stringWithFormat:@"%@  ·  %@", line, status] : status;
 }
 
 #pragma mark - Table
@@ -292,36 +290,16 @@ static NSDate *HZParseISO(id v) {
 }
 
 - (NSString *)tableView:(UITableView *)tv titleForHeaderInSection:(NSInteger)s {
-    if (s == HZContainersList && self.items.count) return [self cloudOn] ? @"SAVED LOGINS · YOUR ACCOUNT" : @"SAVED LOGINS";
+    if (s == HZContainersList && self.items.count) return @"SAVED LOGINS";
     return nil;
 }
 
 - (NSString *)tableView:(UITableView *)tv titleForFooterInSection:(NSInteger)s {
-    if (s == HZContainersPending && [self hasPending])
-        return @"Tap to cancel. A queued save doesn't change anything in the app; it's captured — and cleared — "
-               @"the moment the app next launches.";
-    if (s == HZContainersError && [self tableView:tv numberOfRowsInSection:s]) {
-        if (self.cloudError.length) return @"Tap to retry. The login stays on this iPhone until it reaches your account.";
-        return @"The tweak ran but couldn't complete the last request. If it mentions libSandy, make sure the "
-               @"libSandy package is installed and reboot once, then try again.";
-    }
-    if (s == HZContainersSave) {
-        NSString *base = @"Saves the current account exactly as it is now — files, cookies and keychain — plus the "
-                         @"spoofed identity it runs on. The save finishes the next time you open the app";
-        return [self cloudOn]
-            ? [base stringByAppendingString:@", then it's uploaded to your account and removed from this iPhone."]
-            : [base stringByAppendingString:@"."];
-    }
+    if (s == HZContainersPending && [self hasPending]) return @"Tap to cancel.";
+    if (s == HZContainersError && self.cloudError.length) return @"Tap to retry.";
     if (s == HZContainersList) {
-        if (self.items.count == 0) {
-            if ([self cloudOn] && !self.cloudRows && !self.cloudError) return @"Loading your account…";
-            return @"No saved logins yet. Log into an account, then tap Save current login.";
-        }
-        NSString *base = @"Tap a saved login to restore it and get back into that account on next launch. Swipe a row "
-                         @"to rename or delete it. Restoring replaces whatever is currently in the app.";
-        return [self cloudOn]
-            ? [base stringByAppendingString:@" Logins in your account are downloaded when you restore them."]
-            : [base stringByAppendingString:@" Sign in under Settings → Account to keep these in your Supabase account instead of on this iPhone."];
+        if (self.items.count == 0) return ([self cloudOn] && !self.cloudRows && !self.cloudError) ? @"Loading…" : @"No saved logins yet.";
+        return @"Tap to restore. Swipe to rename or delete.";
     }
     return nil;
 }
@@ -344,9 +322,7 @@ static NSDate *HZParseISO(id v) {
         cell.textLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightSemibold];
         cell.textLabel.textColor = HZAccent();
         cell.detailTextLabel.numberOfLines = 0;
-        cell.detailTextLabel.text = saving
-            ? [NSString stringWithFormat:@"Open %@ to finish saving \"%@\".", self.appName, self.pendingSave]
-            : [NSString stringWithFormat:@"Open %@ to finish restoring \"%@\".", self.appName, self.pendingLoad];
+        cell.detailTextLabel.text = [NSString stringWithFormat:@"Open %@ to finish", self.appName];
         cell.imageView.image = [UIImage systemImageNamed:@"clock.arrow.circlepath"];
         cell.imageView.tintColor = HZAccent();
         UIImageView *x = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"xmark.circle.fill"]];
@@ -373,7 +349,7 @@ static NSDate *HZParseISO(id v) {
         cell.textLabel.text = @"Save current login";
         cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
         cell.textLabel.textColor = HZAccent();
-        cell.detailTextLabel.text = [self cloudOn] ? @"Snapshot the logged-in account into your account" : @"Snapshot the account that's logged in now";
+        cell.detailTextLabel.text = nil;
         cell.imageView.image = [UIImage systemImageNamed:[self cloudOn] ? @"icloud.and.arrow.up.fill" : @"square.and.arrow.down.fill"];
         cell.imageView.tintColor = HZAccent();
         cell.selectionStyle = UITableViewCellSelectionStyleDefault;
@@ -438,9 +414,8 @@ static NSDate *HZParseISO(id v) {
 
 - (void)confirmCancel {
     BOOL saving = self.pendingSave.length > 0;
-    UIAlertController *a = [UIAlertController alertControllerWithTitle:saving ? @"Cancel Queued Save?" : @"Cancel Queued Restore?"
-        message:saving ? @"The current login won't be saved." : @"The current state of the app will be left as is."
-        preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:saving ? @"Cancel Save?" : @"Cancel Restore?"
+        message:nil preferredStyle:UIAlertControllerStyleAlert];
     [a addAction:[UIAlertAction actionWithTitle:@"Keep" style:UIAlertActionStyleCancel handler:nil]];
     [a addAction:[UIAlertAction actionWithTitle:@"Cancel Request" style:UIAlertActionStyleDestructive
         handler:^(__unused UIAlertAction *x) { [self cancelPending]; }]];
@@ -450,13 +425,11 @@ static NSDate *HZParseISO(id v) {
 - (void)promptSave {
     NSDateFormatter *f = [NSDateFormatter new]; f.dateFormat = @"MMM d, h:mm a";
     NSString *suggested = [f stringFromDate:[NSDate date]];
-    NSString *where = [self cloudOn] ? @"It's captured the next time you open the app and then uploaded to your account." : @"It's captured the next time you open the app.";
-    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Save Current Login"
-        message:[NSString stringWithFormat:@"Name this snapshot of %@'s current account. %@", self.appName, where]
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Save Current Login" message:@"Name it."
         preferredStyle:UIAlertControllerStyleAlert];
-    [a addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.placeholder = @"e.g. main account"; tf.text = suggested; tf.autocapitalizationType = UITextAutocapitalizationTypeWords; }];
+    [a addTextFieldWithConfigurationHandler:^(UITextField *tf) { tf.placeholder = @"Name"; tf.text = suggested; tf.autocapitalizationType = UITextAutocapitalizationTypeWords; }];
     [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-    [a addAction:[UIAlertAction actionWithTitle:@"Queue Save" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *x) {
+    [a addAction:[UIAlertAction actionWithTitle:@"Save" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *x) {
         NSString *name = [HZConfig sanitizeSnapshotName:a.textFields.firstObject.text];
         if (!name) { [self toast:@"Enter a name"]; return; }
         [self queueSave:name];
@@ -471,16 +444,16 @@ static NSDate *HZParseISO(id v) {
         [HZConfig setSnapshotSavePending:name forApp:self.bundleId];
         if (![HZContainerSync queueSnapshotSave:name load:nil forApp:self.bundleId]) {
             [HZConfig setSnapshotSavePending:nil forApp:self.bundleId];
-            [self openAppAlert:@"Couldn't reach the app's container. Open the app once, then try again."];
+            [self openAppAlert:[NSString stringWithFormat:@"Open %@ once, then try again.", self.appName]];
             [self reload];
             return;
         }
         [self reload];
-        [self openAppAlert:[NSString stringWithFormat:@"Now open %@ to finish saving \"%@\".", self.appName, name]];
+        [self openAppAlert:[NSString stringWithFormat:@"Open %@ to finish.", self.appName]];
     };
     if (!exists) { go(); return; }
     UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Overwrite?"
-        message:[NSString stringWithFormat:@"A saved login named \"%@\" already exists. Saving will replace it%@.", name, [self cloudOn] ? @" in your account too" : @""]
+        message:[NSString stringWithFormat:@"\"%@\" already exists.", name]
         preferredStyle:UIAlertControllerStyleAlert];
     [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [a addAction:[UIAlertAction actionWithTitle:@"Overwrite" style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *x) { go(); }]];
@@ -490,23 +463,22 @@ static NSDate *HZParseISO(id v) {
 - (void)confirmLoad:(HZContainerItem *)it {
     NSString *name = it.name;
     BOOL needsDownload = [self cloudOn] && it.cloud && !(it.local && ([self localMatchesCloud:it] || [self localNewerThanCloud:it]));
-    NSString *extra = needsDownload ? @" It's downloaded from your account first." : @"";
-    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Restore This Login?"
-        message:[NSString stringWithFormat:@"Restoring \"%@\" replaces whatever is currently in %@ (its files, cookies and keychain) and puts back the saved account and its spoofed identity. This happens the next time you open the app.%@", name, self.appName, extra]
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"Restore \"%@\"?", name]
+        message:[NSString stringWithFormat:@"Replaces what's in %@ now.", self.appName]
         preferredStyle:UIAlertControllerStyleAlert];
     [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [a addAction:[UIAlertAction actionWithTitle:needsDownload ? @"Download & Restore" : @"Restore" style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *x) {
         [self ensureLocal:it then:^(BOOL ok) {
-            if (!ok) { if (!self.cloudError) [self toast:@"Couldn't get this login"]; return; }
+            if (!ok) { if (!self.cloudError) [self toast:@"Couldn't download"]; return; }
             [HZConfig setSnapshotLoadPending:name forApp:self.bundleId];
             if (![HZContainerSync queueSnapshotSave:nil load:name forApp:self.bundleId]) {
                 [HZConfig setSnapshotLoadPending:nil forApp:self.bundleId];
-                [self openAppAlert:@"Couldn't reach the app's container. Open the app once, then try again."];
+                [self openAppAlert:[NSString stringWithFormat:@"Open %@ once, then try again.", self.appName]];
                 [self reload];
                 return;
             }
             [self reload];
-            [self openAppAlert:[NSString stringWithFormat:@"Now open %@ to finish restoring \"%@\".", self.appName, name]];
+            [self openAppAlert:[NSString stringWithFormat:@"Open %@ to finish.", self.appName]];
         }];
     }]];
     [self presentViewController:a animated:YES completion:nil];
@@ -541,10 +513,8 @@ static NSDate *HZParseISO(id v) {
 
 - (void)confirmDelete:(HZContainerItem *)it {
     NSString *name = it.name;
-    NSString *where = ([self cloudOn] && it.cloud) ? @" from your account" : @"";
-    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Delete Saved Login?"
-        message:[NSString stringWithFormat:@"\"%@\" will be permanently deleted%@. This can't be undone.", name, where]
-        preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"Delete \"%@\"?", name]
+        message:@"Can't be undone." preferredStyle:UIAlertControllerStyleAlert];
     [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [a addAction:[UIAlertAction actionWithTitle:@"Delete" style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *x) {
         if ([self.pendingLoad isEqualToString:name] || [self.pendingSave isEqualToString:name]) [self cancelPending];
@@ -564,7 +534,7 @@ static NSDate *HZParseISO(id v) {
 #pragma mark - Small helpers
 
 - (void)openAppAlert:(NSString *)message {
-    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Queued" message:message preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:nil message:message preferredStyle:UIAlertControllerStyleAlert];
     [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
     [self presentViewController:a animated:YES completion:nil];
 }

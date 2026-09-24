@@ -54,10 +54,8 @@ typedef NS_ENUM(NSInteger, HZAccountSection) {
         UIImage *img = [[UIImage systemImageNamed:self.gateMode ? @"lock.shield.fill" : @"icloud.and.arrow.up.fill" withConfiguration:c]
                         imageWithTintColor:HZAccent() renderingMode:UIImageRenderingModeAlwaysOriginal];
         self.tableView.tableHeaderView = self.gateMode
-            ? HZHeroHeader(self.tableView.bounds.size.width, img, YES, @"Sign in to continue",
-                @"Heavenzy needs an account. Identity spoofing, the SMS panel and Saved Logins stay off in every app until you sign in here.", nil)
-            : HZHeroHeader(self.tableView.bounds.size.width, img, YES, @"Your Account",
-                @"Keep every saved login in your own Supabase project instead of on this iPhone, and restore them on any phone you sign in on.", nil);
+            ? HZHeroHeader(self.tableView.bounds.size.width, img, YES, @"Sign in to continue", @"Heavenzy needs an account.", nil)
+            : HZHeroHeader(self.tableView.bounds.size.width, img, YES, @"Account", @"Saved logins live in your account.", nil);
     }
 }
 
@@ -93,16 +91,16 @@ typedef NS_ENUM(NSInteger, HZAccountSection) {
     [self.tableView reloadData];
     if (![HZCloud shared].signedIn) { self.statusLine = nil; return; }
     [[HZCloud shared] listContainersForApp:nil completion:^(NSArray<NSDictionary *> *rows, NSError *error) {
-        if (error) self.statusLine = [NSString stringWithFormat:@"Couldn't reach your project: %@", error.localizedDescription];
+        if (error) self.statusLine = [NSString stringWithFormat:@"Offline · %@", error.localizedDescription];
         else {
             unsigned long long bytes = 0;
             NSMutableSet *apps = [NSMutableSet set];
             for (NSDictionary *r in rows) { bytes += [r[@"bytes"] unsignedLongLongValue]; if (r[@"bundle_id"]) [apps addObject:r[@"bundle_id"]]; }
             self.statusLine = rows.count
-                ? [NSString stringWithFormat:@"%lu saved login%@ across %lu app%@ · %@ in your account",
+                ? [NSString stringWithFormat:@"%lu saved login%@ · %lu app%@ · %@",
                    (unsigned long)rows.count, rows.count == 1 ? @"" : @"s", (unsigned long)apps.count, apps.count == 1 ? @"" : @"s",
                    [NSByteCountFormatter stringFromByteCount:(long long)bytes countStyle:NSByteCountFormatterCountStyleFile]]
-                : @"No saved logins in your account yet";
+                : @"No saved logins yet";
         }
         [self.tableView reloadSections:[NSIndexSet indexSetWithIndex:HZAccountStatus] withRowAnimation:UITableViewRowAnimationNone];
     }];
@@ -115,7 +113,7 @@ typedef NS_ENUM(NSInteger, HZAccountSection) {
 - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)s {
     BOOL in = [HZCloud shared].signedIn;
     switch (s) {
-        case HZAccountStatus:  return 1;
+        case HZAccountStatus:  return (self.gateMode && !in) ? 0 : 1;   // no card on the sign-in wall
         case HZAccountProject: return (in || [HZConfig cloudHasBuiltInProject]) ? 0 : 2;
         case HZAccountCreds:   return in ? 0 : 2;
         case HZAccountActions: return in ? 1 : 2;
@@ -128,26 +126,17 @@ typedef NS_ENUM(NSInteger, HZAccountSection) {
     BOOL builtIn = [HZConfig cloudHasBuiltInProject];
     switch (s) {
         case HZAccountProject: return (in || builtIn) ? nil : @"SUPABASE PROJECT";
-        case HZAccountCreds:   return in ? nil : @"SIGN IN";
+        case HZAccountCreds:   return (in || self.gateMode) ? nil : @"SIGN IN";
     }
     return nil;
 }
 
 - (NSString *)tableView:(UITableView *)tv titleForFooterInSection:(NSInteger)s {
     BOOL in = [HZCloud shared].signedIn;
-    BOOL builtIn = [HZConfig cloudHasBuiltInProject];
-    if (s == HZAccountStatus && in)
-        return @"While signed in, each saved login is uploaded to your account as soon as it's captured and then "
-               @"removed from this iPhone. Restoring downloads it again. Sign in on another phone to see the same list.";
-    if (s == HZAccountCreds && !in && builtIn)
-        return @"First time? Enter an email and password and tap Create Account. Afterwards, Sign In with the same "
-               @"details on any phone to see your saved logins.";
-    if (s == HZAccountProject && !in && !builtIn)
-        return @"From your Supabase dashboard: Project Settings → API. Paste the Project URL and the anon public key. "
-               @"Run the included supabase/schema.sql once in the SQL editor to create the containers table and bucket.";
+    if (s == HZAccountProject && !in && ![HZConfig cloudHasBuiltInProject])
+        return @"Supabase → Project Settings → API. Run supabase/schema.sql once.";
     if (s == HZAccountActions && !in)
-        return @"Create Account registers a new email + password in your project (if your project requires email "
-               @"confirmation, tap the link in the email before signing in).";
+        return @"New here? Create Account.";
     return nil;
 }
 
@@ -205,19 +194,12 @@ typedef NS_ENUM(NSInteger, HZAccountSection) {
         cell.detailTextLabel.numberOfLines = 0;
         if (cloud.signedIn) {
             cell.textLabel.text = cloud.email ?: @"Signed in";
-            cell.detailTextLabel.text = self.statusLine ?: @"Checking your account…";
+            cell.detailTextLabel.text = self.statusLine ?: @"Checking…";
             cell.imageView.image = [UIImage systemImageNamed:@"checkmark.icloud.fill"];
             cell.imageView.tintColor = HZSuccess();
-        } else if (self.gateMode) {
-            cell.textLabel.text = @"Account required";
-            cell.detailTextLabel.text = @"Sign in with your Heavenzy account, or create one, to unlock the app and the tweak on this iPhone.";
-            cell.imageView.image = [UIImage systemImageNamed:@"lock.fill"];
-            cell.imageView.tintColor = HZAccent();
         } else {
             cell.textLabel.text = @"Not signed in";
-            cell.detailTextLabel.text = cloud.configured
-                ? @"Saved logins stay on this iPhone until you sign in or create an account below."
-                : @"Add your Supabase project below, then sign in or create an account.";
+            cell.detailTextLabel.text = nil;
             cell.imageView.image = [UIImage systemImageNamed:@"icloud.slash"];
             cell.imageView.tintColor = HZTextMuted();
         }
@@ -275,7 +257,7 @@ typedef NS_ENUM(NSInteger, HZAccountSection) {
         self.busy = NO;
         if (error) { [self alert:@"Couldn't Create Account" message:error.localizedDescription]; return; }
         if (needsConfirm) {
-            [self alert:@"Check Your Email" message:[NSString stringWithFormat:@"We sent a confirmation link to %@. Tap it, then come back and Sign In.", email]];
+            [self alert:@"Check Your Email" message:[NSString stringWithFormat:@"Confirm %@, then Sign In.", email]];
             return;
         }
         self.passwordField.text = @"";
@@ -285,7 +267,7 @@ typedef NS_ENUM(NSInteger, HZAccountSection) {
 
 - (void)signOut {
     UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Sign Out?"
-        message:@"Saved logins already in your account stay there. Heavenzy switches off in every app (no spoofing, no panel) and this app locks until you sign in again."
+        message:@"Heavenzy turns off in every app until you sign in again."
         preferredStyle:UIAlertControllerStyleAlert];
     [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [a addAction:[UIAlertAction actionWithTitle:@"Sign Out" style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *x) {

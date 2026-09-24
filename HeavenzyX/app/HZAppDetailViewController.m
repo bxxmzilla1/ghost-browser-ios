@@ -99,23 +99,14 @@ enum { SEC_ENABLE, SEC_DETAILS, SEC_LOGINS, SEC_TOOLS, SEC_ACTIONS, SEC_COUNT };
 }
 
 - (NSString *)tableView:(UITableView *)tv titleForHeaderInSection:(NSInteger)s {
-    if (s == SEC_DETAILS) return self.identityExpanded ? @"NEW IDENTITY  ·  TAP A VALUE TO COPY" : @"NEW IDENTITY";
+    if (s == SEC_DETAILS) return @"IDENTITY";
     if (s == SEC_LOGINS)  return @"ACCOUNTS";
     if (s == SEC_TOOLS)   return @"APP DATA";
     return nil;
 }
 
 - (NSString *)tableView:(UITableView *)tv titleForFooterInSection:(NSInteger)s {
-    if (s == SEC_ENABLE)
-        return @"Keeps your real iPhone model, but this app sees the identity below — like a fresh phone "
-               @"with a first-time install.";
-    if (s == SEC_LOGINS)
-        return @"Save the current logged-in account (files + keychain + identity) and restore it any time "
-               @"to get straight back in — even after a Spoof Chain wipe.";
-    if (s == SEC_ACTIONS)
-        return @"Spoof Chain runs in order: Clear Cache → Reset Data → new identity → Erase App Data. The "
-               @"erase finishes (data, cookies, web data and keychain incl. iCloud items) the next time you "
-               @"open the app, which then starts as a fresh install with the new identity above.";
+    if (s == SEC_ACTIONS) return @"Clear cache → reset data → new identity → erase. Finishes on next launch.";
     return nil;
 }
 
@@ -149,7 +140,7 @@ enum { SEC_ENABLE, SEC_DETAILS, SEC_LOGINS, SEC_TOOLS, SEC_ACTIONS, SEC_COUNT };
             if (ip.row == 0) {   // dropdown toggle
                 cell.textLabel.text = @"Device Identity";
                 cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
-                cell.detailTextLabel.text = self.identityExpanded ? @"iPhone X-format serial, UDID, IDFV, IDFA, MACs, IMEI" : @"iPhone X · tap to view 7 spoofed values";
+                cell.detailTextLabel.text = self.identityExpanded ? @"iPhone X format" : @"iPhone X · Serial · UDID · IDFV · IDFA · MACs · IMEI";
                 cell.detailTextLabel.textColor = HZTextMuted();
                 cell.detailTextLabel.font = [UIFont systemFontOfSize:12];
                 cell.imageView.image = [UIImage systemImageNamed:@"list.bullet.rectangle"];
@@ -177,8 +168,7 @@ enum { SEC_ENABLE, SEC_DETAILS, SEC_LOGINS, SEC_TOOLS, SEC_ACTIONS, SEC_COUNT };
             NSUInteger count = [HZConfig snapshotsForApp:self.bundleId].count;
             cell.textLabel.text = @"Saved Logins";
             cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
-            cell.detailTextLabel.text = count ? [NSString stringWithFormat:@"%lu saved · save or restore an account", (unsigned long)count]
-                                              : @"Save & restore logged-in accounts";
+            cell.detailTextLabel.text = count ? [NSString stringWithFormat:@"%lu saved", (unsigned long)count] : nil;
             cell.detailTextLabel.textColor = HZTextMuted();
             cell.detailTextLabel.font = [UIFont systemFontOfSize:12];
             cell.imageView.image = [UIImage systemImageNamed:@"person.crop.circle.badge.checkmark"];
@@ -190,7 +180,7 @@ enum { SEC_ENABLE, SEC_DETAILS, SEC_LOGINS, SEC_TOOLS, SEC_ACTIONS, SEC_COUNT };
         case SEC_TOOLS: {
             cell.textLabel.text = @"App Data & Tools";
             cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
-            cell.detailTextLabel.text = @"Version, size, caches, badge, rename…";
+            cell.detailTextLabel.text = nil;
             cell.detailTextLabel.textColor = HZTextMuted();
             cell.detailTextLabel.font = [UIFont systemFontOfSize:12];
             cell.imageView.image = [UIImage systemImageNamed:@"square.grid.2x2"];
@@ -296,9 +286,7 @@ enum { SEC_ENABLE, SEC_DETAILS, SEC_LOGINS, SEC_TOOLS, SEC_ACTIONS, SEC_COUNT };
 - (void)confirmSpoofChain {
     if (self.chainRunning) return;
     UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Run Spoof Chain?"
-        message:[NSString stringWithFormat:@"For %@ this will, in order: clear the cache, reset its data "
-                 @"(Library, Documents, tmp), roll a fresh device identity, then queue an erase that "
-                 @"completes the next time you open the app. This can't be undone.", self.appName]
+        message:[NSString stringWithFormat:@"Wipes %@ and gives it a new identity. Can't be undone.", self.appName]
         preferredStyle:UIAlertControllerStyleAlert];
     [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [a addAction:[UIAlertAction actionWithTitle:@"Run Spoof Chain" style:UIAlertActionStyleDestructive
@@ -330,8 +318,7 @@ enum { SEC_ENABLE, SEC_DETAILS, SEC_LOGINS, SEC_TOOLS, SEC_ACTIONS, SEC_COUNT };
 
 - (void)chainDoneAlert {
     UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Spoof Chain Complete"
-        message:[NSString stringWithFormat:@"%@'s cache and data were cleared and a new identity was "
-                 @"generated. Open the app to finish the erase and start fresh.", self.appName]
+        message:[NSString stringWithFormat:@"Open %@ to finish.", self.appName]
         preferredStyle:UIAlertControllerStyleAlert];
     [a addAction:[UIAlertAction actionWithTitle:@"Done" style:UIAlertActionStyleDefault handler:nil]];
     [self presentViewController:a animated:YES completion:nil];

@@ -103,7 +103,7 @@
 - (void)refreshHeader {
     NSUInteger on = 0;
     for (NSDictionary *a in self.apps) if ([HZConfig isEnabledForApp:a[@"id"]]) on++;
-    UIView *pill = HZPill(on ? [NSString stringWithFormat:@"%lu spoofed", (unsigned long)on] : @"nothing spoofed yet",
+    UIView *pill = HZPill(on ? [NSString stringWithFormat:@"%lu spoofed", (unsigned long)on] : @"0 spoofed",
                           on ? HZSuccess() : HZTextMuted());
     self.tableView.tableHeaderView = HZCompactHeader(self.tableView.bounds.size.width, HZLogo(), @"Heavenzy", pill);
 }
@@ -166,8 +166,7 @@
 }
 
 - (NSString *)tableView:(UITableView *)tv titleForFooterInSection:(NSInteger)s {
-    return @"Tap an app to spoof it, view or copy its identity, run the Spoof Chain, or open App Data & "
-           @"Tools. Inside any app, hold two fingers to open the SMS panel.";
+    return @"Hold two fingers in any app for the panel.";
 }
 
 - (void)tableView:(UITableView *)tv willDisplayHeaderView:(UIView *)v forSection:(NSInteger)s { HZStyleHeaderFooter(v); }

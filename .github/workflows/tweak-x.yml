@@ -48,7 +48,7 @@ jobs:
           cp HeavenzyX/packages/*.deb out/
           ls -la out
 
-      - name: Verify package contents (tweak dylib + control app)
+      - name: Verify package contents (tweak dylib + control app + libSandy profile)
         run: |
           set -e
           deb=$(ls out/*.deb | head -n1)
@@ -57,7 +57,10 @@ jobs:
           grep -q 'Library/MobileSubstrate/DynamicLibraries/Heavenzy.plist' contents.txt
           grep -q 'Applications/Heavenzy.app/Heavenzy$' contents.txt
           grep -q 'Applications/Heavenzy.app/Info.plist' contents.txt
-          echo "OK: dylib, filter plist, app binary and Info.plist all present"
+          # Must be exactly /var/jb/Library/libSandy/Heavenzy.plist — a doubled var/jb prefix means
+          # the layout dir is wrong and the tweak can't grant the app access to the snapshots dir.
+          grep -Eq '(^|[ ./])var/jb/Library/libSandy/Heavenzy\.plist$' contents.txt
+          echo "OK: dylib, filter plist, app binary, Info.plist and libSandy profile all present"
 
       - uses: actions/upload-artifact@v4
         with:

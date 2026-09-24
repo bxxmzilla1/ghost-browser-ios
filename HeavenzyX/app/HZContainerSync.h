@@ -23,4 +23,14 @@
 /// the central HZConfig copy, which the sandboxed tweak can't reach without libSandy).
 + (BOOL)wipePendingForApp:(NSString *)bundleId;
 
+/// Queue a container-snapshot save or restore in the app's own container (the reliable channel the
+/// sandboxed tweak reads on next launch). Pass exactly one name; the other must be nil. Passing both
+/// nil clears any queued op. Returns NO if the container can't be located.
++ (BOOL)queueSnapshotSave:(NSString *)saveName load:(NSString *)loadName forApp:(NSString *)bundleId;
+
+/// The real, post-launch snapshot state from the app's own container (the tweak clears the flags
+/// there the moment it runs, even when libSandy is unavailable). Keys: snapSave, snapLoad,
+/// snapLastError (all optional NSStrings). Empty dict if the app has no container yet.
++ (NSDictionary *)snapshotStateForApp:(NSString *)bundleId;
+
 @end

@@ -1,5 +1,6 @@
 #import "HZAppDetailViewController.h"
 #import "HZAppToolsViewController.h"
+#import "HZContainersViewController.h"
 #import "HZAppData.h"
 #import "HZTheme.h"
 #import "HZConfig.h"
@@ -7,7 +8,7 @@
 #import "HZContainerSync.h"
 
 // Section indices.
-enum { SEC_ENABLE, SEC_DETAILS, SEC_TOOLS, SEC_ACTIONS, SEC_COUNT };
+enum { SEC_ENABLE, SEC_DETAILS, SEC_LOGINS, SEC_TOOLS, SEC_ACTIONS, SEC_COUNT };
 
 @interface HZAppDetailViewController ()
 @property (nonatomic, copy) NSString *bundleId;
@@ -90,6 +91,7 @@ enum { SEC_ENABLE, SEC_DETAILS, SEC_TOOLS, SEC_ACTIONS, SEC_COUNT };
     switch (s) {
         case SEC_ENABLE:  return 1;
         case SEC_DETAILS: return self.identityExpanded ? (1 + self.details.count) : 1;  // row 0 = dropdown toggle
+        case SEC_LOGINS:  return 1;   // Saved Logins →
         case SEC_TOOLS:   return 1;   // App Data & Tools →
         case SEC_ACTIONS: return 1;   // Spoof Chain
         default:          return 0;
@@ -98,6 +100,7 @@ enum { SEC_ENABLE, SEC_DETAILS, SEC_TOOLS, SEC_ACTIONS, SEC_COUNT };
 
 - (NSString *)tableView:(UITableView *)tv titleForHeaderInSection:(NSInteger)s {
     if (s == SEC_DETAILS) return self.identityExpanded ? @"NEW IDENTITY  ·  TAP A VALUE TO COPY" : @"NEW IDENTITY";
+    if (s == SEC_LOGINS)  return @"ACCOUNTS";
     if (s == SEC_TOOLS)   return @"APP DATA";
     return nil;
 }
@@ -106,6 +109,9 @@ enum { SEC_ENABLE, SEC_DETAILS, SEC_TOOLS, SEC_ACTIONS, SEC_COUNT };
     if (s == SEC_ENABLE)
         return @"Keeps your real iPhone model, but this app sees the identity below — like a fresh phone "
                @"with a first-time install.";
+    if (s == SEC_LOGINS)
+        return @"Save the current logged-in account (files + keychain + identity) and restore it any time "
+               @"to get straight back in — even after a Spoof Chain wipe.";
     if (s == SEC_ACTIONS)
         return @"Spoof Chain runs in order: Clear Cache → Reset Data → new identity → Erase App Data. The "
                @"erase finishes (data, cookies, web data and keychain incl. iCloud items) the next time you "
@@ -167,6 +173,20 @@ enum { SEC_ENABLE, SEC_DETAILS, SEC_TOOLS, SEC_ACTIONS, SEC_COUNT };
             cell.selectionStyle = UITableViewCellSelectionStyleDefault;
             break;
         }
+        case SEC_LOGINS: {
+            NSUInteger count = [HZConfig snapshotsForApp:self.bundleId].count;
+            cell.textLabel.text = @"Saved Logins";
+            cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
+            cell.detailTextLabel.text = count ? [NSString stringWithFormat:@"%lu saved · save or restore an account", (unsigned long)count]
+                                              : @"Save & restore logged-in accounts";
+            cell.detailTextLabel.textColor = HZTextMuted();
+            cell.detailTextLabel.font = [UIFont systemFontOfSize:12];
+            cell.imageView.image = [UIImage systemImageNamed:@"person.crop.circle.badge.checkmark"];
+            cell.imageView.tintColor = HZAccent();
+            cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+            cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+            break;
+        }
         case SEC_TOOLS: {
             cell.textLabel.text = @"App Data & Tools";
             cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
@@ -202,6 +222,11 @@ enum { SEC_ENABLE, SEC_DETAILS, SEC_TOOLS, SEC_ACTIONS, SEC_COUNT };
 
 - (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)ip {
     [tv deselectRowAtIndexPath:ip animated:YES];
+    if (ip.section == SEC_LOGINS) {
+        HZContainersViewController *c = [[HZContainersViewController alloc] initWithBundleId:self.bundleId name:self.appName];
+        [self.navigationController pushViewController:c animated:YES];
+        return;
+    }
     if (ip.section == SEC_TOOLS) {
         HZAppToolsViewController *t = [[HZAppToolsViewController alloc] initWithBundleId:self.bundleId name:self.appName];
         [self.navigationController pushViewController:t animated:YES];

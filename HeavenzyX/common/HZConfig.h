@@ -88,6 +88,8 @@
 
 /// Project URL (https://xxxx.supabase.co) and public anon key. Stored centrally like the SMS
 /// settings; the signed-in session itself lives in the control app's keychain (see HZCloud).
+/// YES when a project URL + anon key are compiled in (the Account screen then hides the project fields).
++ (BOOL)cloudHasBuiltInProject;
 + (NSString *)cloudURL;
 + (void)setCloudURL:(NSString *)url;
 + (NSString *)cloudAnonKey;

@@ -112,7 +112,7 @@ typedef NS_ENUM(NSInteger, HZAccountSection) {
     BOOL in = [HZCloud shared].signedIn;
     switch (s) {
         case HZAccountStatus:  return 1;
-        case HZAccountProject: return in ? 0 : 2;
+        case HZAccountProject: return (in || [HZConfig cloudHasBuiltInProject]) ? 0 : 2;
         case HZAccountCreds:   return in ? 0 : 2;
         case HZAccountActions: return in ? 1 : 2;
     }
@@ -121,8 +121,9 @@ typedef NS_ENUM(NSInteger, HZAccountSection) {
 
 - (NSString *)tableView:(UITableView *)tv titleForHeaderInSection:(NSInteger)s {
     BOOL in = [HZCloud shared].signedIn;
+    BOOL builtIn = [HZConfig cloudHasBuiltInProject];
     switch (s) {
-        case HZAccountProject: return in ? nil : @"SUPABASE PROJECT";
+        case HZAccountProject: return (in || builtIn) ? nil : @"SUPABASE PROJECT";
         case HZAccountCreds:   return in ? nil : @"SIGN IN";
     }
     return nil;
@@ -130,10 +131,14 @@ typedef NS_ENUM(NSInteger, HZAccountSection) {
 
 - (NSString *)tableView:(UITableView *)tv titleForFooterInSection:(NSInteger)s {
     BOOL in = [HZCloud shared].signedIn;
+    BOOL builtIn = [HZConfig cloudHasBuiltInProject];
     if (s == HZAccountStatus && in)
         return @"While signed in, each saved login is uploaded to your account as soon as it's captured and then "
                @"removed from this iPhone. Restoring downloads it again. Sign in on another phone to see the same list.";
-    if (s == HZAccountProject && !in)
+    if (s == HZAccountCreds && !in && builtIn)
+        return @"First time? Enter an email and password and tap Create Account. Afterwards, Sign In with the same "
+               @"details on any phone to see your saved logins.";
+    if (s == HZAccountProject && !in && !builtIn)
         return @"From your Supabase dashboard: Project Settings → API. Paste the Project URL and the anon public key. "
                @"Run the included supabase/schema.sql once in the SQL editor to create the containers table and bucket.";
     if (s == HZAccountActions && !in)
@@ -202,7 +207,7 @@ typedef NS_ENUM(NSInteger, HZAccountSection) {
         } else {
             cell.textLabel.text = @"Not signed in";
             cell.detailTextLabel.text = cloud.configured
-                ? @"Saved logins stay on this iPhone until you sign in."
+                ? @"Saved logins stay on this iPhone until you sign in or create an account below."
                 : @"Add your Supabase project below, then sign in or create an account.";
             cell.imageView.image = [UIImage systemImageNamed:@"icloud.slash"];
             cell.imageView.tintColor = HZTextMuted();

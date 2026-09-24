@@ -206,13 +206,25 @@ static int gHZSandyStatus = -1;   // -1 = libSandy not loaded, else libSandy_app
     [self write:cfg];
 }
 
+// Built-in project. The anon key is a public, RLS-restricted key by design; it grants nothing on its
+// own — every row and object is scoped to the signed-in user by the policies in supabase/schema.sql.
+// A value stored via Settings (setCloudURL: / setCloudAnonKey:) overrides these.
+static NSString *const HZDefaultCloudURL = @"https://ubslmdrisqurfriqisoa.supabase.co";
+static NSString *const HZDefaultCloudAnonKey = @"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVic2xtZHJpc3F1cmZyaXFpc29hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAyNzU3NjcsImV4cCI6MjEwNTg1MTc2N30.0cShCnPQxy3dpGuzHzvK7dBV5KhOrIz91ncfcrs9kZs";
+
++ (BOOL)cloudHasBuiltInProject { return HZDefaultCloudURL.length > 0 && HZDefaultCloudAnonKey.length > 0; }
+
 + (NSString *)cloudURL {
     NSString *u = [[self cloudField:@"url"] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (!u.length) u = HZDefaultCloudURL;
     while ([u hasSuffix:@"/"]) u = [u substringToIndex:u.length - 1];
     return u ?: @"";
 }
 + (void)setCloudURL:(NSString *)url { [self setCloudField:@"url" value:url]; }
-+ (NSString *)cloudAnonKey { return [[self cloudField:@"anonKey"] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] ?: @""; }
++ (NSString *)cloudAnonKey {
+    NSString *k = [[self cloudField:@"anonKey"] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    return k.length ? k : HZDefaultCloudAnonKey;
+}
 + (void)setCloudAnonKey:(NSString *)key { [self setCloudField:@"anonKey" value:key]; }
 
 #pragma mark Container snapshots

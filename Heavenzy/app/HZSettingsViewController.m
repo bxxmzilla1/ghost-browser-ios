@@ -2,8 +2,10 @@
 #import "HZTheme.h"
 #import "HZConfig.h"
 #import "HZContainerSync.h"
+#import "HZCloud.h"
+#import "HZAccountViewController.h"
 
-typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionAuto, HZSectionNames, HZSectionProvider, HZSectionDiddy, HZSectionGrizzly, HZSectionGrizzlyPool, HZSectionCount };
+typedef NS_ENUM(NSInteger, HZSection) { HZSectionAccount, HZSectionMode, HZSectionAuto, HZSectionNames, HZSectionProvider, HZSectionDiddy, HZSectionGrizzly, HZSectionGrizzlyPool, HZSectionCount };
 
 @interface HZSettingsViewController () <UITextFieldDelegate, UITextViewDelegate>
 @property (nonatomic, strong) UITextField *diddyKeyField;
@@ -116,6 +118,7 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionAuto, HZSectionN
 
 - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)s {
     switch (s) {
+        case HZSectionAccount:  return 1;
         case HZSectionMode:     return 1;
         case HZSectionAuto:     return 1;
         case HZSectionNames:    return 1;
@@ -129,6 +132,7 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionAuto, HZSectionN
 
 - (NSString *)tableView:(UITableView *)tv titleForHeaderInSection:(NSInteger)s {
     switch (s) {
+        case HZSectionAccount:  return @"ACCOUNT";
         case HZSectionMode:     return @"PANEL MODE";
         case HZSectionAuto:     return @"AUTO";
         case HZSectionNames:    return @"APPROVED NAMES";
@@ -142,6 +146,10 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionAuto, HZSectionN
 
 - (NSString *)tableView:(UITableView *)tv titleForFooterInSection:(NSInteger)s {
     switch (s) {
+        case HZSectionAccount:
+            return [HZCloud shared].signedIn
+                ? @"Saved logins are stored in your account (Supabase), not on this iPhone."
+                : @"Sign in to keep every saved login in your own Supabase database instead of on this iPhone.";
         case HZSectionMode:
             return [[HZConfig panelMode] isEqualToString:@"scraper"]
                 ? @"The two-finger panel shows the Instagram username scraper. Open a followers/following list, "
@@ -182,6 +190,17 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionAuto, HZSectionN
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
     UIView *sel = [UIView new]; sel.backgroundColor = HZCardElevated(); cell.selectedBackgroundView = sel;
     cell.tintColor = HZAccent();
+
+    if (ip.section == HZSectionAccount) {
+        HZCloud *cloud = [HZCloud shared];
+        cell.textLabel.text = cloud.signedIn ? (cloud.email ?: @"Signed in") : @"Sign In or Create Account";
+        cell.detailTextLabel.text = cloud.signedIn ? @"Saved logins sync to your account" : @"Save your containers in your Supabase account";
+        cell.imageView.image = [UIImage systemImageNamed:cloud.signedIn ? @"checkmark.icloud.fill" : @"person.crop.circle.badge.plus"];
+        cell.imageView.tintColor = cloud.signedIn ? HZSuccess() : HZAccent();
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+        return cell;
+    }
 
     if (ip.section == HZSectionMode) {
         BOOL scraper = [[HZConfig panelMode] isEqualToString:@"scraper"];
@@ -296,7 +315,17 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionMode, HZSectionAuto, HZSectionN
     [self.tableView reloadSections:[NSIndexSet indexSetWithIndex:HZSectionAuto] withRowAnimation:UITableViewRowAnimationNone];
 }
 
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    [self.tableView reloadSections:[NSIndexSet indexSetWithIndex:HZSectionAccount] withRowAnimation:UITableViewRowAnimationNone];
+}
+
 - (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)ip {
+    if (ip.section == HZSectionAccount) {
+        [tv deselectRowAtIndexPath:ip animated:YES];
+        [self.navigationController pushViewController:[HZAccountViewController new] animated:YES];
+        return;
+    }
     if (ip.section == HZSectionProvider) {
         [HZConfig setSmsProvider:ip.row == 1 ? @"grizzly" : @"diddy"];
     } else if (ip.section == HZSectionGrizzlyPool) {

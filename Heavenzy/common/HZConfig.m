@@ -101,39 +101,24 @@ static int gHZSandyStatus = -1;   // -1 = libSandy not loaded, else libSandy_app
     [self write:cfg];
 }
 
-#pragma mark SMS settings (global, reserved __sms key)
+#pragma mark Panel settings (global, reserved __sms key)
 
 // Stored under a top-level key that can never collide with a real bundle id (those never start "__").
-+ (id)smsField:(NSString *)k { id d = [self all][@"__sms"]; return [d isKindOfClass:NSDictionary.class] ? d[k] : nil; }
+// The key name is historical; kept so existing approved-names / auto-scan values survive the upgrade.
++ (id)panelField:(NSString *)k { id d = [self all][@"__sms"]; return [d isKindOfClass:NSDictionary.class] ? d[k] : nil; }
 
-+ (void)setSmsField:(NSString *)k value:(NSString *)v {
++ (void)setPanelField:(NSString *)k value:(NSString *)v {
     NSMutableDictionary *cfg = [[self all] mutableCopy];
     NSMutableDictionary *e = [self mutableEntry:@"__sms" in:cfg];
     if (v.length) e[k] = v; else [e removeObjectForKey:k];
     [self write:cfg];
 }
 
-+ (NSString *)smsProvider     { NSString *p = [self smsField:@"provider"]; return p.length ? p : @"diddy"; }
-+ (NSString *)diddyKey        { return [self smsField:@"diddyKey"]; }
-+ (NSString *)grizzlyKey      { return [self smsField:@"grizzlyKey"]; }
-+ (NSString *)grizzlyMaxPrice { return [self smsField:@"grizzlyMaxPrice"]; }
++ (NSString *)approvedNames { return [self panelField:@"approvedNames"]; }
++ (void)setApprovedNames:(NSString *)names { [self setPanelField:@"approvedNames" value:names ?: @""]; }
 
-+ (void)setSmsProvider:(NSString *)provider { [self setSmsField:@"provider" value:[provider isEqualToString:@"grizzly"] ? @"grizzly" : @"diddy"]; }
-+ (void)setDiddyKey:(NSString *)key         { [self setSmsField:@"diddyKey" value:key]; }
-+ (void)setGrizzlyKey:(NSString *)key       { [self setSmsField:@"grizzlyKey" value:key]; }
-+ (void)setGrizzlyMaxPrice:(NSString *)price{ [self setSmsField:@"grizzlyMaxPrice" value:price]; }
-
-+ (NSString *)grizzlyCountry { return [[self smsField:@"grizzlyCountry"] isEqualToString:@"virtual"] ? @"virtual" : @"usa"; }
-+ (void)setGrizzlyCountry:(NSString *)country { [self setSmsField:@"grizzlyCountry" value:[country isEqualToString:@"virtual"] ? @"virtual" : @"usa"]; }
-
-+ (NSString *)panelMode { NSString *m = [self smsField:@"panelMode"]; return [m isEqualToString:@"scraper"] ? @"scraper" : @"sms"; }
-+ (void)setPanelMode:(NSString *)mode { [self setSmsField:@"panelMode" value:[mode isEqualToString:@"scraper"] ? @"scraper" : @"sms"]; }
-
-+ (NSString *)approvedNames { return [self smsField:@"approvedNames"]; }
-+ (void)setApprovedNames:(NSString *)names { [self setSmsField:@"approvedNames" value:names ?: @""]; }
-
-+ (BOOL)autoScan { return [[self smsField:@"autoScan"] isEqualToString:@"1"]; }
-+ (void)setAutoScan:(BOOL)on { [self setSmsField:@"autoScan" value:on ? @"1" : @"0"]; }
++ (BOOL)autoScan { return [[self panelField:@"autoScan"] isEqualToString:@"1"]; }
++ (void)setAutoScan:(BOOL)on { [self setPanelField:@"autoScan" value:on ? @"1" : @"0"]; }
 
 #pragma mark SpringBoard overrides (icon names + badges)
 

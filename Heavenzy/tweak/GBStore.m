@@ -50,7 +50,7 @@ static NSString *GBPrefsPath(void) {
     _localeId      = [d[@"localeId"] copy];
     _floatingOrigin = CGPointMake(d[@"floatX"] ? [d[@"floatX"] doubleValue] : -1,
                                   d[@"floatY"] ? [d[@"floatY"] doubleValue] : -1);
-    [self readSmsSettingsFrom:d];
+    [self readPanelSettingsFrom:d];
 
     // If the in-app panel never configured this app, fall back to what the Heavenzy control app set
     // centrally for this bundle id (Ghost model). Adopted into the local container so it sticks even
@@ -68,48 +68,32 @@ static NSString *GBPrefsPath(void) {
         }
     }
 
-    [self adoptCentralSmsSettingsIfMissing];
+    [self adoptCentralPanelSettingsIfMissing];
 }
 
-- (void)readSmsSettingsFrom:(NSDictionary *)d {
-    _smsProvider     = [d[@"smsProvider"] copy] ?: @"diddy";
-    _diddyKey        = [d[@"diddyKey"] copy];
-    _grizzlyKey      = [d[@"grizzlyKey"] copy];
-    _grizzlyMaxPrice = [d[@"grizzlyMaxPrice"] copy];
-    _grizzlyCountry  = [d[@"grizzlyCountry"] isEqualToString:@"virtual"] ? @"virtual" : @"usa";
+- (void)readPanelSettingsFrom:(NSDictionary *)d {
     _accountId       = [d[@"accountId"] isKindOfClass:NSString.class] ? [d[@"accountId"] copy] : nil;
-    _panelMode       = [d[@"panelMode"] isEqualToString:@"scraper"] ? @"scraper" : @"sms";
     _approvedNames   = [d[@"approvedNames"] copy];
     _autoScan        = [d[@"autoScan"] boolValue];
 }
 
-// SMS settings normally arrive via the control app writing our container plist; if they're not
+// Panel settings normally arrive via the control app writing our container plist; if they're not
 // there yet but the central store is reachable (libSandy), adopt them as a fallback.
-- (void)adoptCentralSmsSettingsIfMissing {
+- (void)adoptCentralPanelSettingsIfMissing {
     [HZConfig grantSandboxAccess];
     if (![[HZConfig all] count]) return;   // central store unreachable (no libSandy) — keep container values
     NSDictionary *onDisk = [NSDictionary dictionaryWithContentsOfFile:GBPrefsPath()];
-    if (![onDisk objectForKey:@"panelMode"])     _panelMode     = [[HZConfig panelMode] copy];
     if (![onDisk objectForKey:@"approvedNames"]) _approvedNames = [[HZConfig approvedNames] copy];
     if (![onDisk objectForKey:@"autoScan"])      _autoScan      = [HZConfig autoScan];
-    if (![onDisk objectForKey:@"grizzlyCountry"]) _grizzlyCountry = [[HZConfig grizzlyCountry] copy];
     if (![onDisk objectForKey:@"accountId"])     _accountId     = [[HZConfig cloudAccountId] copy];
-    if (_diddyKey.length || _grizzlyKey.length) return;
-    NSString *dk = [HZConfig diddyKey], *gk = [HZConfig grizzlyKey];
-    if (dk.length || gk.length) {
-        _smsProvider = [[HZConfig smsProvider] copy] ?: @"diddy";
-        _diddyKey = [dk copy]; _grizzlyKey = [gk copy];
-        _grizzlyMaxPrice = [[HZConfig grizzlyMaxPrice] copy];
-        _grizzlyCountry  = [[HZConfig grizzlyCountry] copy];
-    }
 }
 
-// The control app rewrites the SMS keys in our plist while we're running (Settings → provider/keys).
-// Re-read just those so the panel reflects the change without relaunching the app.
-- (void)reloadSmsSettings {
+// The control app rewrites the panel settings in our plist while we're running; re-read them so the
+// panel reflects the change without relaunching the app.
+- (void)reloadPanelSettings {
     NSDictionary *d = [NSDictionary dictionaryWithContentsOfFile:GBPrefsPath()];
-    [self readSmsSettingsFrom:d];
-    [self adoptCentralSmsSettingsIfMissing];
+    [self readPanelSettingsFrom:d];
+    [self adoptCentralPanelSettingsIfMissing];
 }
 
 // Maps the shared HZDevice-schema identity onto this store's fields. Only identifiers are applied —
@@ -132,10 +116,10 @@ static NSString *GBPrefsPath(void) {
 }
 
 - (void)save {
-    // The SMS keys are owned by the control app — pick up its latest values before writing so a
-    // panel-position save can't overwrite a provider/key change made while we were running.
+    // The panel/account settings are owned by the control app — pick up its latest values before
+    // writing so a panel-position save can't overwrite a change made while we were running.
     NSDictionary *onDisk = [NSDictionary dictionaryWithContentsOfFile:GBPrefsPath()];
-    if (onDisk) [self readSmsSettingsFrom:onDisk];
+    if (onDisk) [self readPanelSettingsFrom:onDisk];
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     d[@"enabled"]       = @(_enabled);
     if (_wipePending)   d[@"wipePending"]   = @YES;
@@ -170,13 +154,7 @@ static NSString *GBPrefsPath(void) {
         d[@"floatX"] = @(_floatingOrigin.x);
         d[@"floatY"] = @(_floatingOrigin.y);
     }
-    if (_smsProvider)     d[@"smsProvider"]     = _smsProvider;   // preserve across in-app saves/wipes
-    if (_diddyKey)        d[@"diddyKey"]        = _diddyKey;
-    if (_grizzlyKey)      d[@"grizzlyKey"]      = _grizzlyKey;
-    if (_grizzlyMaxPrice) d[@"grizzlyMaxPrice"] = _grizzlyMaxPrice;
-    if (_grizzlyCountry)  d[@"grizzlyCountry"]  = _grizzlyCountry;
-    if (_accountId.length) d[@"accountId"]      = _accountId;
-    if (_panelMode)       d[@"panelMode"]       = _panelMode;
+    if (_accountId.length) d[@"accountId"]      = _accountId;   // preserve across in-app saves/wipes
     if (_approvedNames.length) d[@"approvedNames"] = _approvedNames;
     d[@"autoScan"] = @(_autoScan);
     NSString *path = GBPrefsPath();

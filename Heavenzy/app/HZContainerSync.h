@@ -7,16 +7,16 @@
 @interface HZContainerSync : NSObject
 
 /// Mirror enabled + identity (+ optional erase request) into the app's container. Returns NO if the
-/// container can't be located (e.g. the app has never been launched yet). The current global SMS
-/// settings (from HZConfig) are mirrored in too.
+/// container can't be located (e.g. the app has never been launched yet). The current global panel
+/// settings and account gate (from HZConfig) are mirrored in too.
 + (BOOL)writeForApp:(NSString *)bundleId
            identity:(NSDictionary *)identity
             enabled:(BOOL)enabled
         wipePending:(BOOL)wipePending;
 
-/// Push the current SMS settings (from HZConfig) into *every* installed user app's container, so the
-/// in-app SMS panel can reach them even in apps that aren't spoofed. Returns how many were updated.
-+ (NSInteger)writeSmsSettingsToAllApps;
+/// Push the current panel settings + account gate (from HZConfig) into *every* installed user app's
+/// container, so the tweak can reach them even in apps that aren't spoofed. Returns how many were updated.
++ (NSInteger)writePanelSettingsToAllApps;
 
 /// TRUE if an erase is still queued in the app's own container. The tweak clears this flag from the
 /// container the moment it performs the wipe, so this reflects the real, post-launch state (unlike

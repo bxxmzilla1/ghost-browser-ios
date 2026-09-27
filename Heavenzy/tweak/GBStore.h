@@ -54,22 +54,16 @@
 @property (nonatomic, copy) NSString *timeZoneName;    // IANA, e.g. "America/New_York"
 @property (nonatomic, copy) NSString *localeId;        // e.g. "en_US" (NSLocale)
 
-// Saved SMS-panel position (top-left of the card, points). Negative = not set yet.
+// Saved panel position (top-left of the card, points). Negative = not set yet.
 @property (nonatomic, assign) CGPoint floatingOrigin;
 
-// SMS provider settings mirrored in by the control app (used by the in-app SMS panel).
-@property (nonatomic, copy) NSString *smsProvider;      // "diddy" | "grizzly"
-@property (nonatomic, copy) NSString *diddyKey;
-@property (nonatomic, copy) NSString *grizzlyKey;
-@property (nonatomic, copy) NSString *grizzlyMaxPrice;
-@property (nonatomic, copy) NSString *grizzlyCountry;   // GrizzlySMS US pool: "usa" (187) or "virtual" (12)
+// Panel / account settings mirrored in by the control app.
 @property (nonatomic, copy) NSString *accountId;        // Heavenzy account (Supabase user id) the control app is signed in as; nil → tweak inactive
-@property (nonatomic, copy) NSString *panelMode;        // "sms" | "scraper" — what the panel shows
 @property (nonatomic, copy) NSString *approvedNames;    // scraper first-name filter (raw, one per line)
 @property (nonatomic, assign) BOOL autoScan;           // auto-tap Scan every second in scraper mode
 
-/// Re-read only the SMS/panel settings from disk (the control app updates them while we run).
-- (void)reloadSmsSettings;
+/// Re-read only the panel settings from disk (the control app updates them while we run).
+- (void)reloadPanelSettings;
 
 /// Native pixel dimensions (points * scale) — what UIScreen.nativeBounds should report.
 @property (nonatomic, readonly) NSInteger nativePixelsW;

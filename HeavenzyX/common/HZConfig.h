@@ -37,24 +37,8 @@
 + (BOOL)wipePendingForApp:(NSString *)bundleId;
 + (void)setWipePending:(BOOL)pending forApp:(NSString *)bundleId;
 
-/// Global SMS-verification settings (provider + API keys), shared by every app. Stored once (not
-/// per-bundle) and mirrored into each app container so the in-app SMS panel can reach them.
-+ (NSString *)smsProvider;   // "diddy" | "grizzly"
-+ (void)setSmsProvider:(NSString *)provider;
-+ (NSString *)diddyKey;
-+ (void)setDiddyKey:(NSString *)key;
-+ (NSString *)grizzlyKey;
-+ (void)setGrizzlyKey:(NSString *)key;
-+ (NSString *)grizzlyMaxPrice;
-+ (void)setGrizzlyMaxPrice:(NSString *)price;
-/// GrizzlySMS US pool: "usa" (real carrier numbers, country 187) or "virtual" (USA virtual, country 12).
-+ (NSString *)grizzlyCountry;
-+ (void)setGrizzlyCountry:(NSString *)country;
-
-/// What the in-app panel shows: "sms" (number + code) or "scraper" (Instagram username scanner).
-+ (NSString *)panelMode;
-+ (void)setPanelMode:(NSString *)mode;
-
+/// Global panel settings, shared by every app. Stored once (not per-bundle) and mirrored into each
+/// app container so the in-app panel can reach them.
 /// Approved first-names list for the scraper, as the user typed it (one name per line). Empty = no filter.
 + (NSString *)approvedNames;
 + (void)setApprovedNames:(NSString *)names;
@@ -86,7 +70,7 @@
 
 #pragma mark - Cloud account (Supabase project the control app syncs saved logins to)
 
-/// Project URL (https://xxxx.supabase.co) and public anon key. Stored centrally like the SMS
+/// Project URL (https://xxxx.supabase.co) and public anon key. Stored centrally like the panel
 /// settings; the signed-in session itself lives in the control app's keychain (see HZCloud).
 /// YES when a project URL + anon key are compiled in (the Account screen then hides the project fields).
 + (BOOL)cloudHasBuiltInProject;

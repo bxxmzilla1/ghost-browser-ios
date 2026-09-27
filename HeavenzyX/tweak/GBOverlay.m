@@ -1,8 +1,6 @@
 #import "GBOverlay.h"
-#import "GBSMS.h"
 #import "GBStore.h"
 #import "GBScanner.h"
-#import "GBSession.h"
 
 #pragma mark - Style
 
@@ -24,23 +22,6 @@ static UILabel *GBLabel(NSString *t, CGFloat size, UIFontWeight w, UIColor *c) {
 @property (nonatomic, assign) BOOL positioned;
 @property (nonatomic, assign) CGPoint dragStart;
 
-@property (nonatomic, strong) UILabel *serviceLabel;
-@property (nonatomic, strong) UIButton *getButton;
-@property (nonatomic, strong) UILabel *phoneLabel;
-@property (nonatomic, strong) UILabel *statusLabel;
-@property (nonatomic, strong) UILabel *codeLabel;
-@property (nonatomic, strong) UIButton *againButton;
-
-@property (nonatomic, copy)   NSString *orderId;
-@property (nonatomic, copy)   NSString *orderProvider;   // provider the current order was placed with
-@property (nonatomic, strong) NSTimer *pollTimer;
-@property (nonatomic, assign) NSInteger pollTicks;
-
-@property (nonatomic, strong) UILabel *titleLabel;
-@property (nonatomic, strong) UIStackView *smsStack;
-@property (nonatomic, strong) UIStackView *scraperStack;
-@property (nonatomic, copy)   NSString *appliedMode;
-
 @property (nonatomic, strong) UIButton *scanButton;
 @property (nonatomic, strong) UIButton *exportButton;
 @property (nonatomic, strong) UIButton *clearButton;
@@ -54,11 +35,7 @@ static UILabel *GBLabel(NSString *t, CGFloat size, UIFontWeight w, UIColor *c) {
 @property (nonatomic, assign) BOOL autoRunning;   // auto loop active in this panel session (toggled by Scan)
 @property (nonatomic, assign) BOOL scanInFlight;
 
-@property (nonatomic, strong) UIButton *sessionButton;   // "Copy IG Session" — only inside Instagram
-@property (nonatomic, assign) BOOL sessionInFlight;
-
-- (void)refreshServiceLine;
-- (void)applyPanelMode;
+- (void)refreshState;
 - (void)panelDidShow;
 - (BOOL)isInstagramHost;
 @end
@@ -91,8 +68,7 @@ static BOOL GBIsInstagramBundle(void) {
     strip.layer.cornerRadius = 2; strip.translatesAutoresizingMaskIntoConstraints = NO;
     [self.card addSubview:strip];
 
-    UILabel *title = GBLabel(@"Heavenzy", 15, UIFontWeightBold, UIColor.whiteColor);
-    self.titleLabel = title;
+    UILabel *title = GBLabel(@"Kairos", 15, UIFontWeightBold, UIColor.whiteColor);
     UIButton *close = [UIButton buttonWithType:UIButtonTypeSystem];
     [close setTitle:@"✕" forState:UIControlStateNormal];
     [close setTitleColor:GBSubtle() forState:UIControlStateNormal];
@@ -102,38 +78,6 @@ static BOOL GBIsInstagramBundle(void) {
     UIStackView *header = [[UIStackView alloc] initWithArrangedSubviews:@[ title, [UIView new], close ]];
     header.alignment = UIStackViewAlignmentCenter;
 
-    self.serviceLabel = GBLabel([self serviceLine], 12, UIFontWeightRegular, GBSubtle());
-    self.serviceLabel.numberOfLines = 2;
-
-    self.getButton = [self wideButton:@"Get Number" bg:GBAccent() fg:UIColor.whiteColor];
-    [self.getButton addTarget:self action:@selector(getTapped) forControlEvents:UIControlEventTouchUpInside];
-
-    self.phoneLabel = GBLabel(@"", 20, UIFontWeightBold, UIColor.whiteColor);
-    self.phoneLabel.textAlignment = NSTextAlignmentCenter;
-    self.phoneLabel.userInteractionEnabled = YES;
-    [self.phoneLabel addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(copyPhone)]];
-    self.phoneLabel.hidden = YES;
-
-    self.statusLabel = GBLabel(@"", 12, UIFontWeightRegular, GBSubtle());
-    self.statusLabel.textAlignment = NSTextAlignmentCenter;
-    self.statusLabel.numberOfLines = 0;
-    self.statusLabel.hidden = YES;
-
-    self.codeLabel = GBLabel(@"", 30, UIFontWeightHeavy, GBAccent());
-    self.codeLabel.textAlignment = NSTextAlignmentCenter;
-    self.codeLabel.userInteractionEnabled = YES;
-    [self.codeLabel addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(copyCode)]];
-    self.codeLabel.hidden = YES;
-
-    self.againButton = [self wideButton:@"New Number" bg:GBFieldBG() fg:GBAccent()];
-    [self.againButton addTarget:self action:@selector(newTapped) forControlEvents:UIControlEventTouchUpInside];
-    self.againButton.hidden = YES;
-
-    self.smsStack = [[UIStackView alloc] initWithArrangedSubviews:@[
-        self.serviceLabel, self.getButton, self.phoneLabel, self.codeLabel, self.statusLabel, self.againButton ]];
-    self.smsStack.axis = UILayoutConstraintAxisVertical; self.smsStack.spacing = 8;
-
-    // --- Username scraper mode ---
     self.collectedUsernames = [NSMutableOrderedSet orderedSet];
 
     self.scanHintLabel = GBLabel(@"", 13, UIFontWeightSemibold, GBSubtle());
@@ -189,17 +133,8 @@ static BOOL GBIsInstagramBundle(void) {
     UIStackView *actions = [[UIStackView alloc] initWithArrangedSubviews:@[ self.exportButton, self.clearButton, self.scanButton ]];
     actions.axis = UILayoutConstraintAxisHorizontal; actions.spacing = 8; actions.distribution = UIStackViewDistributionFillEqually;
 
-    self.scraperStack = [[UIStackView alloc] initWithArrangedSubviews:@[
-        self.scanHintLabel, self.listToggle, self.usernamesView, actions ]];
-    self.scraperStack.axis = UILayoutConstraintAxisVertical; self.scraperStack.spacing = 8;
-    self.scraperStack.hidden = YES;
-
-    // Instagram session grab — sits below both modes and only appears inside the Instagram app.
-    self.sessionButton = [self wideButton:@"Copy IG Session" bg:GBFieldBG() fg:GBAccent()];
-    [self.sessionButton addTarget:self action:@selector(copySessionTapped) forControlEvents:UIControlEventTouchUpInside];
-    self.sessionButton.hidden = YES;
-
-    UIStackView *body = [[UIStackView alloc] initWithArrangedSubviews:@[ header, self.smsStack, self.scraperStack, self.sessionButton ]];
+    UIStackView *body = [[UIStackView alloc] initWithArrangedSubviews:@[
+        header, self.scanHintLabel, self.listToggle, self.usernamesView, actions ]];
     body.axis = UILayoutConstraintAxisVertical; body.spacing = 8;
     body.translatesAutoresizingMaskIntoConstraints = NO;
     [self.card addSubview:body];
@@ -221,8 +156,8 @@ static BOOL GBIsInstagramBundle(void) {
     UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(pan:)];
     [self.card addGestureRecognizer:pan];
 
-    [self applyPanelMode];
-    // The control app can flip the mode while we're in the background; re-read when we come back.
+    [self refreshState];
+    // The control app can change Auto / approved names while we're in the background; re-read on return.
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(appBecameActive)
                                                  name:UIApplicationDidBecomeActiveNotification object:nil];
 }
@@ -231,52 +166,36 @@ static BOOL GBIsInstagramBundle(void) {
 
 - (void)appBecameActive {
     if (self.view.window.hidden) return;
-    [[GBStore shared] reloadSmsSettings];
-    [self refreshServiceLine];
-    [self applyPanelMode];
+    [[GBStore shared] reloadPanelSettings];
+    [self refreshState];
 }
 
 - (BOOL)isInstagramHost { return GBIsInstagramBundle(); }
 
-// Show exactly one function: SMS or the username scraper, per the control app's Settings switch.
-- (void)applyPanelMode {
-    NSString *mode = [GBStore shared].panelMode ?: @"sms";
-    BOOL scraper = [mode isEqualToString:@"scraper"];
-    BOOL changed = ![mode isEqualToString:self.appliedMode];
-    self.appliedMode = mode;
-    self.smsStack.hidden = scraper;
-    self.scraperStack.hidden = !scraper;
-    self.sessionButton.hidden = ![self isInstagramHost];   // IG-only, shown in either mode
-    self.titleLabel.text = scraper ? @"Kairos" : @"Heavenzy · SMS";
-    if (scraper) {
-        BOOL ig = [self isInstagramHost];
-        self.scanButton.enabled = ig && !self.scanInFlight;
-        self.scanButton.alpha = ig ? 1 : 0.5;
-        if (!ig && !self.collectedUsernames.count)
-            self.scanHintLabel.text = @"Works inside Instagram.";
-        if (![GBStore shared].autoScan) self.autoRunning = NO;   // setting off => never auto
-        else if (changed) self.autoRunning = YES;                // just entered scraper with Auto on => run
-        [self refreshUsernameList];
-    } else {
-        self.autoRunning = NO;
-    }
+// Sync button state with the host app + the control app's Auto setting.
+- (void)refreshState {
+    BOOL ig = [self isInstagramHost];
+    self.scanButton.enabled = ig && !self.scanInFlight;
+    self.scanButton.alpha = ig ? 1 : 0.5;
+    if (!ig && !self.collectedUsernames.count)
+        self.scanHintLabel.text = @"Works inside Instagram.";
+    if (![GBStore shared].autoScan) self.autoRunning = NO;   // setting off => never auto
+    [self refreshUsernameList];
     [self updateAutoScan];
     [self updateScanButtonAppearance];
-    if (changed && self.positioned) [self relayoutCard];
 }
 
-// Called when the panel is (re)shown: start the auto loop if Auto is enabled for the scraper.
+// Called when the panel is (re)shown: start the auto loop if Auto is enabled.
 - (void)panelDidShow {
-    [self applyPanelMode];
-    if ([self.appliedMode isEqualToString:@"scraper"] && [GBStore shared].autoScan) self.autoRunning = YES;
+    [self refreshState];
+    if ([GBStore shared].autoScan) self.autoRunning = YES;
     [self updateAutoScan];
     [self updateScanButtonAppearance];
 }
 
-// Start/stop the once-a-second auto scanner based on mode + local running state + visibility.
+// Start/stop the once-a-second auto scanner based on local running state + visibility.
 - (void)updateAutoScan {
-    BOOL want = [self.appliedMode isEqualToString:@"scraper"] && self.autoRunning
-                && [self isInstagramHost] && self.view.window && !self.view.window.hidden;
+    BOOL want = self.autoRunning && [self isInstagramHost] && self.view.window && !self.view.window.hidden;
     if (want && !self.autoTimer) {
         self.autoTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(NSTimer *t) {
             [self autoTick];
@@ -295,8 +214,7 @@ static BOOL GBIsInstagramBundle(void) {
 
 // While Auto is running the Scan button glows/pulses; pressing it toggles the loop.
 - (void)updateScanButtonAppearance {
-    BOOL glowing = self.autoRunning && [self.appliedMode isEqualToString:@"scraper"];
-    if (glowing) [self startScanPulse]; else [self stopScanPulse];
+    if (self.autoRunning) [self startScanPulse]; else [self stopScanPulse];
 }
 
 - (void)startScanPulse {
@@ -362,12 +280,6 @@ static BOOL GBIsInstagramBundle(void) {
     [self refreshUsernameList];
     [self relayoutCard];
 }
-
-- (NSString *)serviceLine {
-    return [NSString stringWithFormat:@"%@ · %@ · %@", [GBSMS providerLabel], [GBSMS serviceLabel], [GBSMS countryLabel]];
-}
-
-- (void)refreshServiceLine { self.serviceLabel.text = [self serviceLine]; }
 
 - (UIButton *)wideButton:(NSString *)t bg:(UIColor *)bg fg:(UIColor *)fg {
     UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
@@ -447,7 +359,7 @@ static BOOL GBIsInstagramBundle(void) {
     if (![self isInstagramHost] || self.scanInFlight) return;
     UIWindowScene *scene = self.view.window.windowScene;
     if (!scene) return;
-    [[GBStore shared] reloadSmsSettings];   // pick up a fresh approved-names list from the control app
+    [[GBStore shared] reloadPanelSettings];   // pick up a fresh approved-names list from the control app
     NSSet *approved = [self approvedNameSet];
     self.scanInFlight = YES;
     self.scanButton.enabled = NO;
@@ -482,123 +394,6 @@ static BOOL GBIsInstagramBundle(void) {
     [self flash:self.scanHintLabel text:[NSString stringWithFormat:@"%lu usernames copied.", (unsigned long)self.collectedUsernames.count]];
 }
 
-#pragma mark IG session
-
-- (void)copySessionTapped {
-    if (self.sessionInFlight || ![self isInstagramHost]) return;
-    self.sessionInFlight = YES;
-    self.sessionButton.enabled = NO;
-    [self.sessionButton setTitle:@"Reading…" forState:UIControlStateNormal];
-    __weak typeof(self) w = self;
-    [GBSession collectInstagramSession:^(NSDictionary<NSString *, NSString *> *cookies) {
-        __strong typeof(w) s = w; if (!s) return;
-        s.sessionInFlight = NO;
-        s.sessionButton.enabled = YES;
-        NSString *header = [GBSession cookieStringFrom:cookies];
-        BOOL ok = cookies[@"sessionid"].length > 0;
-        if (ok) {
-            UIPasteboard.generalPasteboard.string = header;
-            [s flashButton:s.sessionButton text:@"Copied ✓" revert:@"Copy IG Session" color:GBAccent()];
-        } else if (header.length) {
-            // Some cookies but no sessionid (e.g. logged out of web but native token present).
-            UIPasteboard.generalPasteboard.string = header;
-            [s flashButton:s.sessionButton text:@"Partial — copied" revert:@"Copy IG Session" color:GBAccent()];
-        } else {
-            [s flashButton:s.sessionButton text:@"No session found" revert:@"Copy IG Session" color:[UIColor systemRedColor]];
-        }
-    }];
-}
-
-// Briefly show feedback on a button, then restore its normal title/colour.
-- (void)flashButton:(UIButton *)b text:(NSString *)text revert:(NSString *)revert color:(UIColor *)color {
-    [b setTitle:text forState:UIControlStateNormal];
-    [b setTitleColor:color forState:UIControlStateNormal];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        [b setTitle:revert forState:UIControlStateNormal];
-        [b setTitleColor:GBAccent() forState:UIControlStateNormal];
-    });
-}
-
-- (void)getTapped {
-    [self.pollTimer invalidate]; self.pollTimer = nil;
-    [[GBStore shared] reloadSmsSettings];
-    [self refreshServiceLine];
-    self.getButton.enabled = NO;
-    [self.getButton setTitle:@"Requesting…" forState:UIControlStateNormal];
-    self.phoneLabel.hidden = YES; self.codeLabel.hidden = YES; self.againButton.hidden = YES;
-    self.statusLabel.hidden = NO; self.statusLabel.textColor = GBSubtle();
-    self.statusLabel.text = @"Requesting a number…";
-    __weak typeof(self) w = self;
-    NSString *provider = [GBSMS currentProvider];
-    [GBSMS requestNumberWithCompletion:^(NSString *phone, NSString *orderId, NSString *service, NSString *error) {
-        __strong typeof(w) s = w; if (!s) return;
-        s.getButton.enabled = YES;
-        [s.getButton setTitle:@"Get Number" forState:UIControlStateNormal];
-        if (error) { s.statusLabel.textColor = [UIColor systemRedColor]; s.statusLabel.text = error; return; }
-        s.orderId = orderId;
-        s.orderProvider = provider;
-        s.getButton.hidden = YES;
-        s.phoneLabel.hidden = NO; s.phoneLabel.text = [s prettyPhone:phone];
-        s.againButton.hidden = NO;
-        s.statusLabel.textColor = GBSubtle();
-        s.statusLabel.text = @"Waiting for the code… (tap the number to copy)";
-        UIPasteboard.generalPasteboard.string = phone;
-        [s startPolling];
-    }];
-}
-
-- (NSString *)prettyPhone:(NSString *)p {
-    if (p.length == 11 && [p hasPrefix:@"1"]) {
-        return [NSString stringWithFormat:@"+1 (%@) %@-%@", [p substringWithRange:NSMakeRange(1,3)],
-                [p substringWithRange:NSMakeRange(4,3)], [p substringWithRange:NSMakeRange(7,4)]];
-    }
-    return p.length ? [@"+" stringByAppendingString:p] : p;
-}
-
-- (void)startPolling {
-    self.pollTicks = 0;
-    __weak typeof(self) w = self;
-    self.pollTimer = [NSTimer scheduledTimerWithTimeInterval:3.0 repeats:YES block:^(NSTimer *t) {
-        __strong typeof(w) s = w; if (!s) { [t invalidate]; return; }
-        s.pollTicks++;
-        if (s.pollTicks > 80) {   // ~4 minutes
-            [t invalidate]; s.pollTimer = nil;
-            s.statusLabel.text = @"Timed out — tap New Number to try again.";
-            return;
-        }
-        [GBSMS pollOrder:s.orderId provider:s.orderProvider completion:^(NSString *code, NSString *error) {
-            __strong typeof(w) s2 = w; if (!s2) return;
-            if (error) { return; }   // transient; keep polling
-            if (code.length) {
-                [s2.pollTimer invalidate]; s2.pollTimer = nil;
-                s2.codeLabel.hidden = NO; s2.codeLabel.text = code;
-                UIPasteboard.generalPasteboard.string = code;
-                s2.statusLabel.textColor = GBAccent();
-                s2.statusLabel.text = @"Code received & copied (tap to copy again).";
-            }
-        }];
-    }];
-}
-
-- (void)newTapped {
-    [self.pollTimer invalidate]; self.pollTimer = nil;
-    if (self.orderId) [GBSMS cancelOrder:self.orderId provider:self.orderProvider];
-    self.orderId = nil; self.orderProvider = nil;
-    self.phoneLabel.hidden = YES; self.codeLabel.hidden = YES; self.againButton.hidden = YES;
-    self.statusLabel.hidden = YES;
-    self.getButton.hidden = NO; self.getButton.enabled = YES;
-    self.serviceLabel.text = [self serviceLine];
-    [self getTapped];
-}
-
-- (void)copyPhone { if (self.phoneLabel.text.length) { UIPasteboard.generalPasteboard.string = [self digits:self.phoneLabel.text]; [self flash:self.statusLabel text:@"Number copied."]; } }
-- (void)copyCode  { if (self.codeLabel.text.length)  { UIPasteboard.generalPasteboard.string = self.codeLabel.text; [self flash:self.statusLabel text:@"Code copied."]; } }
-
-- (NSString *)digits:(NSString *)s {
-    NSCharacterSet *non = [[NSCharacterSet characterSetWithCharactersInString:@"0123456789"] invertedSet];
-    return [[s componentsSeparatedByCharactersInSet:non] componentsJoinedByString:@""];
-}
-
 - (void)flash:(UILabel *)l text:(NSString *)t {
     l.hidden = NO; NSString *prev = l.text; l.text = t;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ if ([l.text isEqualToString:t]) l.text = prev; });
@@ -623,7 +418,7 @@ static NSMapTable<UIWindowScene *, GBOverlay *> *gOverlays;
         w.backgroundColor = UIColor.clearColor;
         w.rootViewController = [GBOverlayController new];
         [gOverlays setObject:w forKey:scene];
-        NSLog(@"[Heavenzy] SMS panel created");
+        NSLog(@"[Heavenzy] panel created");
     }
     [w present];
 }
@@ -631,9 +426,8 @@ static NSMapTable<UIWindowScene *, GBOverlay *> *gOverlays;
 // Show without permanently stealing key focus (so the app keeps its keyboard). Force an initial
 // render once via makeKeyAndVisible, then hand key back to the app.
 - (void)present {
-    // Pick up provider/key changes made in the Heavenzy app since launch and refresh the header line.
-    [[GBStore shared] reloadSmsSettings];
-    [(GBOverlayController *)self.rootViewController refreshServiceLine];
+    // Pick up Auto / approved-names changes made in the Heavenzy app since launch.
+    [[GBStore shared] reloadPanelSettings];
     self.hidden = NO;
     [(GBOverlayController *)self.rootViewController panelDidShow];   // after unhide so auto-scan can start
     static BOOL forcedOnce = NO;

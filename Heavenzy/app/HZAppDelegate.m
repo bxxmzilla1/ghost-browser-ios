@@ -59,7 +59,7 @@
 - (void)syncAccountStamp {
     [HZConfig setCloudAccountId:[HZCloud shared].userId];
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-        NSInteger n = [HZContainerSync writeSmsSettingsToAllApps];
+        NSInteger n = [HZContainerSync writePanelSettingsToAllApps];
         NSLog(@"[Heavenzy] account stamp (%@) written to %ld app container(s)", [HZCloud shared].userId ?: @"none", (long)n);
     });
 }

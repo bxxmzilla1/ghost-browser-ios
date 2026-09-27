@@ -28,25 +28,20 @@
     return [prefsDir stringByAppendingPathComponent:@"com.heavenzy.plist"];
 }
 
-// Merge the current global SMS settings into a mutable container dict.
-+ (void)applySmsSettingsInto:(NSMutableDictionary *)d {
-    NSString *provider = [HZConfig smsProvider], *dk = [HZConfig diddyKey],
-             *gk = [HZConfig grizzlyKey], *mp = [HZConfig grizzlyMaxPrice];
-    d[@"smsProvider"] = provider.length ? provider : @"diddy";
-    d[@"panelMode"]   = [HZConfig panelMode];
+// Merge the current global panel settings into a mutable container dict.
++ (void)applyPanelSettingsInto:(NSMutableDictionary *)d {
     NSString *approved = [HZConfig approvedNames];
     if (approved.length) d[@"approvedNames"] = approved; else [d removeObjectForKey:@"approvedNames"];
     d[@"autoScan"] = @([HZConfig autoScan]);
-    if (dk.length) d[@"diddyKey"]        = dk; else [d removeObjectForKey:@"diddyKey"];
-    if (gk.length) d[@"grizzlyKey"]      = gk; else [d removeObjectForKey:@"grizzlyKey"];
-    if (mp.length) d[@"grizzlyMaxPrice"] = mp; else [d removeObjectForKey:@"grizzlyMaxPrice"];
-    d[@"grizzlyCountry"] = [HZConfig grizzlyCountry];
     // Account gate for the tweak: present only while the control app is signed in.
     NSString *acct = [HZConfig cloudAccountId];
     if (acct.length) d[@"accountId"] = acct; else [d removeObjectForKey:@"accountId"];
+    // Scrub keys written by older versions (SMS provider + API keys, panel mode).
+    for (NSString *stale in @[ @"smsProvider", @"diddyKey", @"grizzlyKey", @"grizzlyMaxPrice", @"grizzlyCountry", @"panelMode" ])
+        [d removeObjectForKey:stale];
 }
 
-+ (NSInteger)writeSmsSettingsToAllApps {
++ (NSInteger)writePanelSettingsToAllApps {
     NSInteger n = 0;
     @try {
         Class wsClass = NSClassFromString(@"LSApplicationWorkspace");
@@ -58,7 +53,7 @@
             NSString *path = [self plistPathForApp:bid];
             if (!path) continue;
             NSMutableDictionary *d = [[NSDictionary dictionaryWithContentsOfFile:path] mutableCopy] ?: [NSMutableDictionary dictionary];
-            [self applySmsSettingsInto:d];
+            [self applyPanelSettingsInto:d];
             if ([d writeToFile:path atomically:YES]) n++;
         }
     } @catch (__unused NSException *e) {}
@@ -135,7 +130,7 @@
     set(@"imei",      i[@"imei"]);
     d[@"deviceName"] = @"iPhone";
 
-    [self applySmsSettingsInto:d];   // keep the app's copy of the SMS provider settings fresh
+    [self applyPanelSettingsInto:d];   // keep the app's copy of the panel settings fresh
 
     return [d writeToFile:path atomically:YES];
 }

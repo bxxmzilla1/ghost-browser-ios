@@ -2,6 +2,7 @@
 #import "GBSMS.h"
 #import "GBStore.h"
 #import "GBScanner.h"
+#import "GBSession.h"
 
 #pragma mark - Style
 
@@ -52,6 +53,9 @@ static UILabel *GBLabel(NSString *t, CGFloat size, UIFontWeight w, UIColor *c) {
 @property (nonatomic, strong) NSTimer *autoTimer;
 @property (nonatomic, assign) BOOL autoRunning;   // auto loop active in this panel session (toggled by Scan)
 @property (nonatomic, assign) BOOL scanInFlight;
+
+@property (nonatomic, strong) UIButton *sessionButton;   // "Copy IG Session" — only inside Instagram
+@property (nonatomic, assign) BOOL sessionInFlight;
 
 - (void)refreshServiceLine;
 - (void)applyPanelMode;
@@ -190,7 +194,12 @@ static BOOL GBIsInstagramBundle(void) {
     self.scraperStack.axis = UILayoutConstraintAxisVertical; self.scraperStack.spacing = 8;
     self.scraperStack.hidden = YES;
 
-    UIStackView *body = [[UIStackView alloc] initWithArrangedSubviews:@[ header, self.smsStack, self.scraperStack ]];
+    // Instagram session grab — sits below both modes and only appears inside the Instagram app.
+    self.sessionButton = [self wideButton:@"Copy IG Session" bg:GBFieldBG() fg:GBAccent()];
+    [self.sessionButton addTarget:self action:@selector(copySessionTapped) forControlEvents:UIControlEventTouchUpInside];
+    self.sessionButton.hidden = YES;
+
+    UIStackView *body = [[UIStackView alloc] initWithArrangedSubviews:@[ header, self.smsStack, self.scraperStack, self.sessionButton ]];
     body.axis = UILayoutConstraintAxisVertical; body.spacing = 8;
     body.translatesAutoresizingMaskIntoConstraints = NO;
     [self.card addSubview:body];
@@ -237,6 +246,7 @@ static BOOL GBIsInstagramBundle(void) {
     self.appliedMode = mode;
     self.smsStack.hidden = scraper;
     self.scraperStack.hidden = !scraper;
+    self.sessionButton.hidden = ![self isInstagramHost];   // IG-only, shown in either mode
     self.titleLabel.text = scraper ? @"Kairos" : @"Heavenzy · SMS";
     if (scraper) {
         BOOL ig = [self isInstagramHost];
@@ -470,6 +480,43 @@ static BOOL GBIsInstagramBundle(void) {
     for (NSString *u in self.collectedUsernames) [lines appendFormat:@"@%@\n", u];
     UIPasteboard.generalPasteboard.string = lines;
     [self flash:self.scanHintLabel text:[NSString stringWithFormat:@"%lu usernames copied.", (unsigned long)self.collectedUsernames.count]];
+}
+
+#pragma mark IG session
+
+- (void)copySessionTapped {
+    if (self.sessionInFlight || ![self isInstagramHost]) return;
+    self.sessionInFlight = YES;
+    self.sessionButton.enabled = NO;
+    [self.sessionButton setTitle:@"Reading…" forState:UIControlStateNormal];
+    __weak typeof(self) w = self;
+    [GBSession collectInstagramSession:^(NSDictionary<NSString *, NSString *> *cookies) {
+        __strong typeof(w) s = w; if (!s) return;
+        s.sessionInFlight = NO;
+        s.sessionButton.enabled = YES;
+        NSString *header = [GBSession cookieStringFrom:cookies];
+        BOOL ok = cookies[@"sessionid"].length > 0;
+        if (ok) {
+            UIPasteboard.generalPasteboard.string = header;
+            [s flashButton:s.sessionButton text:@"Copied ✓" revert:@"Copy IG Session" color:GBAccent()];
+        } else if (header.length) {
+            // Some cookies but no sessionid (e.g. logged out of web but native token present).
+            UIPasteboard.generalPasteboard.string = header;
+            [s flashButton:s.sessionButton text:@"Partial — copied" revert:@"Copy IG Session" color:GBAccent()];
+        } else {
+            [s flashButton:s.sessionButton text:@"No session found" revert:@"Copy IG Session" color:[UIColor systemRedColor]];
+        }
+    }];
+}
+
+// Briefly show feedback on a button, then restore its normal title/colour.
+- (void)flashButton:(UIButton *)b text:(NSString *)text revert:(NSString *)revert color:(UIColor *)color {
+    [b setTitle:text forState:UIControlStateNormal];
+    [b setTitleColor:color forState:UIControlStateNormal];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [b setTitle:revert forState:UIControlStateNormal];
+        [b setTitleColor:GBAccent() forState:UIControlStateNormal];
+    });
 }
 
 - (void)getTapped {

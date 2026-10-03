@@ -2,10 +2,8 @@
 #import "HZTheme.h"
 #import "HZConfig.h"
 #import "HZContainerSync.h"
-#import "HZCloud.h"
-#import "HZAccountViewController.h"
 
-typedef NS_ENUM(NSInteger, HZSection) { HZSectionAccount, HZSectionAuto, HZSectionNames, HZSectionCount };
+typedef NS_ENUM(NSInteger, HZSection) { HZSectionAuto, HZSectionNames, HZSectionCount };
 
 @interface HZSettingsViewController () <UITextViewDelegate>
 @property (nonatomic, strong) UITextView *namesView;
@@ -83,7 +81,6 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionAccount, HZSectionAuto, HZSecti
 
 - (NSString *)tableView:(UITableView *)tv titleForHeaderInSection:(NSInteger)s {
     switch (s) {
-        case HZSectionAccount: return @"ACCOUNT";
         case HZSectionAuto:    return @"SCRAPER";
         case HZSectionNames:   return @"APPROVED NAMES";
     }
@@ -108,17 +105,6 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionAccount, HZSectionAuto, HZSecti
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
     UIView *sel = [UIView new]; sel.backgroundColor = HZCardElevated(); cell.selectedBackgroundView = sel;
     cell.tintColor = HZAccent();
-
-    if (ip.section == HZSectionAccount) {
-        HZCloud *cloud = [HZCloud shared];
-        cell.textLabel.text = cloud.signedIn ? (cloud.email ?: @"Signed in") : @"Sign In";
-        cell.detailTextLabel.text = nil;
-        cell.imageView.image = [UIImage systemImageNamed:cloud.signedIn ? @"checkmark.icloud.fill" : @"person.crop.circle.badge.plus"];
-        cell.imageView.tintColor = cloud.signedIn ? HZSuccess() : HZAccent();
-        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
-        cell.selectionStyle = UITableViewCellSelectionStyleDefault;
-        return cell;
-    }
 
     if (ip.section == HZSectionAuto) {
         BOOL on = [HZConfig autoScan];
@@ -156,18 +142,6 @@ typedef NS_ENUM(NSInteger, HZSection) { HZSectionAccount, HZSectionAuto, HZSecti
     [HZConfig setAutoScan:sw.on];
     [self pushToApps];   // mirrored into every app container right away so an open panel can pick it up
     [self.tableView reloadSections:[NSIndexSet indexSetWithIndex:HZSectionAuto] withRowAnimation:UITableViewRowAnimationNone];
-}
-
-- (void)viewWillAppear:(BOOL)animated {
-    [super viewWillAppear:animated];
-    [self.tableView reloadSections:[NSIndexSet indexSetWithIndex:HZSectionAccount] withRowAnimation:UITableViewRowAnimationNone];
-}
-
-- (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)ip {
-    if (ip.section == HZSectionAccount) {
-        [tv deselectRowAtIndexPath:ip animated:YES];
-        [self.navigationController pushViewController:[HZAccountViewController new] animated:YES];
-    }
 }
 
 @end

@@ -68,47 +68,4 @@
 /// Tell the SpringBoard side (tweak) to re-read springboard.plist and re-apply names + badges.
 + (void)notifySpringBoard;
 
-#pragma mark - Cloud account (Supabase project the control app syncs saved logins to)
-
-/// Project URL (https://xxxx.supabase.co) and public anon key. Stored centrally like the panel
-/// settings; the signed-in session itself lives in the control app's keychain (see HZCloud).
-/// YES when a project URL + anon key are compiled in (the Account screen then hides the project fields).
-+ (BOOL)cloudHasBuiltInProject;
-+ (NSString *)cloudURL;
-+ (void)setCloudURL:(NSString *)url;
-+ (NSString *)cloudAnonKey;
-+ (void)setCloudAnonKey:(NSString *)key;
-/// User id of the account the control app is signed in as (nil when signed out). The control app also
-/// stamps this into every app's container config as `accountId`; the tweak stays inactive without it.
-+ (NSString *)cloudAccountId;
-+ (void)setCloudAccountId:(NSString *)userId;
-
-#pragma mark - Container snapshots (save / restore a logged-in state)
-
-/// Saved app states live outside every app's own container (so a wipe can't delete them):
-///   /var/mobile/Library/Preferences/Heavenzy/Containers/<bundleId>/<snapshot>/
-///     data/      → the app's Library (minus Caches) + Documents
-///     groups/    → each shared app-group container (minus Caches)
-///     keychain.plist  → the app's keychain items (the part a plain folder-copy misses)
-///     identity.plist  → the Heavenzy device identity active when it was saved
-///     meta.plist      → { name, date, appShortVersion, appBuild, schema }
-/// The control app manages the list here; the tweak does the in-app save/restore (files + keychain).
-+ (NSString *)containersRoot;                          // …/Heavenzy/Containers
-+ (NSString *)snapshotsDirForApp:(NSString *)bundleId; // …/Containers/<bundleId>
-
-/// Metadata for every saved snapshot of an app, newest first. Each entry:
-///   { name, path, date (NSDate|nil), version, build, bytes (NSNumber) }
-+ (NSArray<NSDictionary *> *)snapshotsForApp:(NSString *)bundleId;
-+ (BOOL)deleteSnapshotNamed:(NSString *)name forApp:(NSString *)bundleId;
-+ (BOOL)renameSnapshotNamed:(NSString *)name to:(NSString *)newName forApp:(NSString *)bundleId;
-/// A filesystem-safe folder name for a user-typed snapshot title.
-+ (NSString *)sanitizeSnapshotName:(NSString *)name;
-
-/// Queue a save/restore for the next launch of the app (the tweak performs it, then clears the flag).
-/// Only one op can be pending at a time; queuing one clears the other. Pass nil to clear.
-+ (NSString *)snapshotSavePendingForApp:(NSString *)bundleId;
-+ (void)setSnapshotSavePending:(NSString *)name forApp:(NSString *)bundleId;
-+ (NSString *)snapshotLoadPendingForApp:(NSString *)bundleId;
-+ (void)setSnapshotLoadPending:(NSString *)name forApp:(NSString *)bundleId;
-
 @end

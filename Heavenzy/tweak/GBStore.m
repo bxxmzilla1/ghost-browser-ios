@@ -21,9 +21,6 @@ static NSString *GBPrefsPath(void) {
     NSDictionary *d = [NSDictionary dictionaryWithContentsOfFile:GBPrefsPath()];
     _enabled       = [d[@"enabled"] boolValue];
     _wipePending   = [d[@"wipePending"] boolValue];
-    _snapshotSavePending = [d[@"snapSave"] copy];
-    _snapshotLoadPending = [d[@"snapLoad"] copy];
-    _snapshotLastError   = [d[@"snapLastError"] copy];
     _deviceModel   = [d[@"deviceModel"] copy];
     _marketingName = [d[@"marketingName"] copy];
     _systemVersion = [d[@"systemVersion"] copy];
@@ -72,7 +69,6 @@ static NSString *GBPrefsPath(void) {
 }
 
 - (void)readPanelSettingsFrom:(NSDictionary *)d {
-    _accountId       = [d[@"accountId"] isKindOfClass:NSString.class] ? [d[@"accountId"] copy] : nil;
     _approvedNames   = [d[@"approvedNames"] copy];
     _autoScan        = [d[@"autoScan"] boolValue];
 }
@@ -85,7 +81,6 @@ static NSString *GBPrefsPath(void) {
     NSDictionary *onDisk = [NSDictionary dictionaryWithContentsOfFile:GBPrefsPath()];
     if (![onDisk objectForKey:@"approvedNames"]) _approvedNames = [[HZConfig approvedNames] copy];
     if (![onDisk objectForKey:@"autoScan"])      _autoScan      = [HZConfig autoScan];
-    if (![onDisk objectForKey:@"accountId"])     _accountId     = [[HZConfig cloudAccountId] copy];
 }
 
 // The control app rewrites the panel settings in our plist while we're running; re-read them so the
@@ -116,16 +111,13 @@ static NSString *GBPrefsPath(void) {
 }
 
 - (void)save {
-    // The panel/account settings are owned by the control app — pick up its latest values before
-    // writing so a panel-position save can't overwrite a change made while we were running.
+    // The panel settings are owned by the control app — pick up its latest values before writing so
+    // a panel-position save can't overwrite a change made while we were running.
     NSDictionary *onDisk = [NSDictionary dictionaryWithContentsOfFile:GBPrefsPath()];
     if (onDisk) [self readPanelSettingsFrom:onDisk];
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     d[@"enabled"]       = @(_enabled);
     if (_wipePending)   d[@"wipePending"]   = @YES;
-    if (_snapshotSavePending.length) d[@"snapSave"] = _snapshotSavePending;
-    if (_snapshotLoadPending.length) d[@"snapLoad"] = _snapshotLoadPending;
-    if (_snapshotLastError.length)   d[@"snapLastError"] = _snapshotLastError;
     if (_deviceModel)   d[@"deviceModel"]   = _deviceModel;
     if (_marketingName) d[@"marketingName"] = _marketingName;
     if (_systemVersion) d[@"systemVersion"] = _systemVersion;
@@ -154,7 +146,6 @@ static NSString *GBPrefsPath(void) {
         d[@"floatX"] = @(_floatingOrigin.x);
         d[@"floatY"] = @(_floatingOrigin.y);
     }
-    if (_accountId.length) d[@"accountId"]      = _accountId;   // preserve across in-app saves/wipes
     if (_approvedNames.length) d[@"approvedNames"] = _approvedNames;
     d[@"autoScan"] = @(_autoScan);
     NSString *path = GBPrefsPath();

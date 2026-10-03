@@ -33,11 +33,9 @@
     NSString *approved = [HZConfig approvedNames];
     if (approved.length) d[@"approvedNames"] = approved; else [d removeObjectForKey:@"approvedNames"];
     d[@"autoScan"] = @([HZConfig autoScan]);
-    // Account gate for the tweak: present only while the control app is signed in.
-    NSString *acct = [HZConfig cloudAccountId];
-    if (acct.length) d[@"accountId"] = acct; else [d removeObjectForKey:@"accountId"];
-    // Scrub keys written by older versions (SMS provider + API keys, panel mode).
-    for (NSString *stale in @[ @"smsProvider", @"diddyKey", @"grizzlyKey", @"grizzlyMaxPrice", @"grizzlyCountry", @"panelMode" ])
+    // Scrub keys written by older versions (SMS provider + API keys, panel mode, account gate, snapshots).
+    for (NSString *stale in @[ @"smsProvider", @"diddyKey", @"grizzlyKey", @"grizzlyMaxPrice",
+                               @"grizzlyCountry", @"panelMode", @"accountId", @"snapSave", @"snapLoad", @"snapLastError" ])
         [d removeObjectForKey:stale];
 }
 
@@ -66,29 +64,6 @@
     NSString *path = [container.path stringByAppendingPathComponent:@"Library/Preferences/com.heavenzy.plist"];
     NSDictionary *d = [NSDictionary dictionaryWithContentsOfFile:path];
     return [d[@"wipePending"] boolValue];
-}
-
-+ (BOOL)queueSnapshotSave:(NSString *)saveName load:(NSString *)loadName forApp:(NSString *)bundleId {
-    NSString *path = [self plistPathForApp:bundleId];
-    if (!path) return NO;   // app never launched → no container yet
-    NSMutableDictionary *d = [[NSDictionary dictionaryWithContentsOfFile:path] mutableCopy] ?: [NSMutableDictionary dictionary];
-    [d removeObjectForKey:@"snapSave"];
-    [d removeObjectForKey:@"snapLoad"];
-    [d removeObjectForKey:@"snapLastError"];   // a new request (or a cancel) clears the old failure
-    if (saveName.length) d[@"snapSave"] = saveName;
-    else if (loadName.length) d[@"snapLoad"] = loadName;
-    return [d writeToFile:path atomically:YES];
-}
-
-+ (NSDictionary *)snapshotStateForApp:(NSString *)bundleId {
-    NSURL *container = [self dataContainerForApp:bundleId];
-    if (!container) return @{};
-    NSString *path = [container.path stringByAppendingPathComponent:@"Library/Preferences/com.heavenzy.plist"];
-    NSDictionary *d = [NSDictionary dictionaryWithContentsOfFile:path];
-    NSMutableDictionary *out = [NSMutableDictionary dictionary];
-    for (NSString *k in @[ @"snapSave", @"snapLoad", @"snapLastError" ])
-        if ([d[k] isKindOfClass:NSString.class] && [d[k] length]) out[k] = d[k];
-    return out;
 }
 
 + (BOOL)writeForApp:(NSString *)bundleId

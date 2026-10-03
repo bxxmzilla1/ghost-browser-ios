@@ -6,9 +6,8 @@ include $(THEOS)/makefiles/common.mk
 
 APPLICATION_NAME = Heavenzy
 
-Heavenzy_FILES = main.m HZAppDelegate.m HZTheme.m HZAppListViewController.m HZAppDetailViewController.m HZAppToolsViewController.m HZAppData.m HZContainersViewController.m HZSettingsViewController.m HZContainerSync.m HZCloud.m HZArchive.m HZAccountViewController.m ../common/HZDevice.m ../common/HZConfig.m
+Heavenzy_FILES = main.m HZAppDelegate.m HZTheme.m HZAppListViewController.m HZAppDetailViewController.m HZAppToolsViewController.m HZAppData.m HZSettingsViewController.m HZContainerSync.m ../common/HZDevice.m ../common/HZConfig.m
 Heavenzy_FRAMEWORKS = UIKit Foundation QuartzCore
-Heavenzy_LIBRARIES = z
 Heavenzy_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -I../common
 Heavenzy_CODESIGN_FLAGS = -Sentitlements.plist
 

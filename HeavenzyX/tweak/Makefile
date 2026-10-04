@@ -8,6 +8,8 @@ TWEAK_NAME = Heavenzy
 Heavenzy_FILES = Tweak.xm HZWebClip.xm HZWebSpoofJS.mm GBStore.m GBMenu.m GBOverlay.m GBScanner.m ../common/HZDevice.m ../common/HZConfig.m ../common/HZWebClips.m
 Heavenzy_FRAMEWORKS = UIKit Foundation Security WebKit CoreGraphics CoreFoundation Vision
 Heavenzy_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -I../common
+# Objective-C++ (.xm/.mm): HZWebSpoofJS.mm embeds its JavaScript as a C++11 raw string literal.
+Heavenzy_CCFLAGS = -std=gnu++17
 Heavenzy_WEAK_FRAMEWORKS = AdSupport DeviceCheck CoreTelephony
 
 include $(THEOS)/makefiles/tweak.mk

@@ -137,7 +137,8 @@ static NSURLRequest *HZPrepareLoad(WKWebView *webView, NSURLRequest *request, vo
     @try {
         req = HZPrepareLoad(self, request, ^(NSURLRequest *r) { [weakSelf loadRequest:r]; });
     } @catch (__unused NSException *e) { req = request; }
-    return req ? %orig(req) : nil;
+    if (!req) return nil;   // deferred until the pending wipe finishes
+    return %orig(req);
 }
 
 %end

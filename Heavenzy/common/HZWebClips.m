@@ -46,6 +46,16 @@ static NSString *const kHZTagPrefix = @"hzc=";
     return nil;
 }
 
++ (NSDictionary *)containerForBundleId:(NSString *)bundleId {
+    if (![bundleId hasPrefix:@"com.apple."]) return nil;
+    NSString *upper = bundleId.uppercaseString;
+    for (NSDictionary *c in [self containers]) {
+        NSString *clipId = [c[@"clipId"] uppercaseString];
+        if (clipId.length >= 8 && [upper rangeOfString:clipId].location != NSNotFound) return c;
+    }
+    return nil;
+}
+
 /// Read-modify-write a single container entry.
 + (void)updateContainer:(NSString *)cid with:(void (^)(NSMutableDictionary *c))block {
     if (cid.length == 0) return;

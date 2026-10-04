@@ -5,6 +5,7 @@
 #import "HZTheme.h"
 #import "HZConfig.h"
 #import "HZDevice.h"
+#import "HZWebClips.h"
 #import "HZContainerSync.h"
 
 #pragma mark - Row cell
@@ -106,7 +107,7 @@
 
 - (void)refreshHeader {
     NSUInteger on = 0;
-    for (NSDictionary *a in self.apps) if ([HZConfig isEnabledForApp:a[@"id"]]) on++;
+    for (NSDictionary *a in self.apps) if ([HZConfig isEnabledForApp:a[@"id"]] || [HZWebClips containerForBundleId:a[@"id"]]) on++;
     UIView *pill = HZPill(on ? [NSString stringWithFormat:@"%lu spoofed", (unsigned long)on] : @"0 spoofed",
                           on ? HZSuccess() : HZTextMuted());
     self.tableView.tableHeaderView = HZCompactHeader(self.tableView.bounds.size.width, HZLogo(), @"Heavenzy", pill);
@@ -189,6 +190,20 @@
 
     cell.icon.image = HZAppIcon(bid);
     cell.name.text = app[@"name"];
+
+    // Home Screen web apps made by Web Containers register as apps on newer iOS; they are always
+    // spoofed by the tweak (no Spoof Chain needed — running it just resets the container).
+    NSDictionary *container = [HZWebClips containerForBundleId:bid];
+    if (container) {
+        BOOL opened = [container[@"stores"] count] > 0;
+        BOOL wipe = [container[@"wipePending"] boolValue];
+        cell.name.text = container[@"name"];
+        cell.subtitle.text = [NSString stringWithFormat:@"Web container · seed %@ · %@", [HZWebClips seedLabel:container],
+                              wipe ? @"reset on next open" : opened ? @"spoofed" : @"ready"];
+        cell.subtitle.textColor = HZAccent();
+        return cell;
+    }
+
     cell.subtitle.text = enabled ? (identity ? HZIdentitySummary(identity) : @"Spoofing on") : bid;
     cell.subtitle.textColor = enabled ? HZAccent() : HZTextMuted();
     return cell;

@@ -21,6 +21,9 @@
 + (NSArray<NSDictionary *> *)containers;
 + (NSDictionary *)containerWithId:(NSString *)cid;
 + (NSDictionary *)containerForStoreKey:(NSString *)key;
+/// Newer iOS registers every Home Screen web app as its own application whose bundle identifier ends
+/// with the web clip's identifier ("com.apple.WebKit.…<clipId>"). nil when `bundleId` isn't one of ours.
++ (NSDictionary *)containerForBundleId:(NSString *)bundleId;
 
 + (NSString *)lastSite;
 + (NSString *)lastPrefix;

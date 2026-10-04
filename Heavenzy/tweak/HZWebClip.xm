@@ -5,22 +5,27 @@
 #import "HZConfig.h"
 #import "HZWebClips.h"
 #import "HZWebSpoof.h"
+#import "GBStore.h"
 
 // Spoofed Home Screen web-app containers.
 //
-// Full-screen web clips ("Add to Home Screen" web apps) are all hosted by one system app,
-// com.apple.webapp, which creates a WKWebView per web app with that web app's own website data
-// store. This file only ever runs inside that process (see %ctor) and does for a web container what
-// Tweak.xm does for a native app: the moment a web view is identified as one of ours, the container's
-// identity script is attached to its user content controller so every page it loads sees the same
-// per-container canvas / audio fingerprint, LAN-free WebRTC and re-encoded uploads.
+// Full-screen web clips ("Add to Home Screen" web apps) run outside Safari with their own website
+// data store. This file does for such a web container what Tweak.xm does for a native app: the
+// container's identity script is attached to its WKWebView's user content controller so every page it
+// loads sees the same per-container canvas / audio fingerprint, LAN-free WebRTC and re-encoded uploads.
 //
-// Identification, in order of preference:
-//   1. the "#hzc=<id>" tag the control app bakes into the icon's URL (seen on the first loadRequest:,
-//      stripped before the page sees it; the view's data store is then linked to the container), or
-//   2. a data store that was linked on an earlier launch (handles relaunches that restore state).
+// Which container we are in (see %ctor):
+//   1. Newer iOS registers each Home Screen web app as its own application whose bundle identifier
+//      ends with the web clip's identifier ("com.apple.WebKit.…<clipId>") — a direct, reliable match
+//      that also makes the container show up in the control app's app list.
+//   2. Older iOS hosts all web apps in one process (com.apple.webapp); there the "#hzc=<id>" tag the
+//      control app bakes into the icon's URL identifies the container on its first loadRequest: (it is
+//      stripped before the page sees it) and the view's data store is linked for later launches.
 //
 // Only Objective-C method swizzles — same rule as Tweak.xm, no inline C hooks.
+
+/// Container this whole process belongs to (case 1), nil in the shared-host case.
+static NSString *gHZBoundContainerId;
 
 static const void *kHZContainerKey = &kHZContainerKey;
 
@@ -121,13 +126,18 @@ static NSURLRequest *HZPrepareLoad(WKWebView *webView, NSURLRequest *request, vo
 
 - (instancetype)initWithFrame:(CGRect)frame configuration:(WKWebViewConfiguration *)configuration {
     NSDictionary *container = nil;
+    NSString *key = nil;
     @try {
-        NSString *key = HZStoreKey(configuration.websiteDataStore);
-        container = key ? [HZWebClips containerForStoreKey:key] : nil;
+        key = HZStoreKey(configuration.websiteDataStore);
+        container = gHZBoundContainerId ? [HZWebClips containerWithId:gHZBoundContainerId]
+                                        : (key ? [HZWebClips containerForStoreKey:key] : nil);
         if (container) HZAttachContainer(nil, configuration, container);
     } @catch (__unused NSException *e) {}
     WKWebView *wv = %orig;
-    if (wv && container) objc_setAssociatedObject(wv, kHZContainerKey, container[@"id"], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (wv && container) {
+        objc_setAssociatedObject(wv, kHZContainerKey, container[@"id"], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if (key && gHZBoundContainerId) [HZWebClips linkStoreKey:key toContainer:gHZBoundContainerId];
+    }
     return wv;
 }
 
@@ -163,16 +173,35 @@ static WKNavigation *hz_loadRequestExternal(WKWebView *self, SEL _cmd, NSURLRequ
 %ctor {
     @autoreleasepool {
         NSString *bundleID = [[NSBundle mainBundle] bundleIdentifier];
-        if (!([bundleID isEqualToString:@"com.apple.webapp"] || [bundleID isEqualToString:@"com.apple.webapp1"])) return;
+        BOOL sharedHost = [bundleID isEqualToString:@"com.apple.webapp"] || [bundleID isEqualToString:@"com.apple.webapp1"];
+        if (!sharedHost && ![bundleID hasPrefix:@"com.apple."]) return;
 
         [HZConfig grantSandboxAccess];   // webclips.plist lives in the shared Heavenzy directory
+        NSDictionary *bound = [HZWebClips containerForBundleId:bundleID];
+        if (!bound && !sharedHost) return;   // some other Apple process (incl. WebKit XPC services)
+
+        if (bound) {
+            gHZBoundContainerId = bound[@"id"];
+            // The control app's Spoof Chain / "Erase App Data" queue a native wipe for this bundle id
+            // (either in our own container or in the central plist). For a web container that means a
+            // reset: new fingerprint seed + erase all website data on the first load.
+            GBStore *store = [GBStore shared];
+            if (store.wipePending || [HZConfig wipePendingForApp:bundleID]) {
+                [HZWebClips resetContainer:gHZBoundContainerId];
+                store.wipePending = NO;
+                [store save];
+                [HZConfig setWipePending:NO forApp:bundleID];
+                NSLog(@"[Heavenzy][WebClip] Spoof Chain requested → container %@ reset queued", gHZBoundContainerId);
+            }
+        }
         %init(HZWebClipHooks);
 
         SEL ext = NSSelectorFromString(@"_loadRequest:shouldOpenExternalURLs:");
         if (class_getInstanceMethod(WKWebView.class, ext)) {
             MSHookMessageEx(WKWebView.class, ext, (IMP)hz_loadRequestExternal, (IMP *)&orig_loadRequestExternal);
         }
-        NSLog(@"[Heavenzy][WebClip] active in %@ — %lu container(s), config %@", bundleID,
+        NSLog(@"[Heavenzy][WebClip] active in %@ — bound to %@ (%@), %lu container(s), config %@", bundleID,
+              bound[@"name"] ?: @"shared host", bound ? [HZWebClips seedLabel:bound] : @"tag-based",
               (unsigned long)[HZWebClips containers].count, [HZConfig sandboxAccessDescription]);
     }
 }

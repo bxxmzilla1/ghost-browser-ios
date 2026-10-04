@@ -302,7 +302,7 @@ static void GBInstallGesture(void) {
 
 %ctor {
     @autoreleasepool {
-        NSLog(@"[Heavenzy] Loading build 1.9.0");
+        NSLog(@"[Heavenzy] Loading build 1.10.0");
         NSString *bundleID = [[NSBundle mainBundle] bundleIdentifier];
 
         // SpringBoard gets its own, separate set of hooks (AppData-style icon renames + badge counts).
@@ -324,7 +324,8 @@ static void GBInstallGesture(void) {
         }
 
         // Never touch other system processes (Preferences, daemons using UIKit) or our own control
-        // app (which links UIKit and would otherwise match the filter).
+        // app (which links UIKit and would otherwise match the filter). Home Screen web apps
+        // (com.apple.webapp) are handled separately by HZWebClip.xm.
         if (!bundleID || [bundleID hasPrefix:@"com.apple."] || [bundleID isEqualToString:@"com.heavenzy.app"]) return;
 
         // Try to reach the central store too (only works if libSandy happens to be installed); the

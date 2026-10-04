@@ -1,6 +1,7 @@
 #import "HZAppListViewController.h"
 #import "HZAppDetailViewController.h"
 #import "HZSettingsViewController.h"
+#import "HZWebContainersViewController.h"
 #import "HZTheme.h"
 #import "HZConfig.h"
 #import "HZDevice.h"
@@ -82,9 +83,12 @@
     self.navigationItem.hidesSearchBarWhenScrolling = YES;
 
     UIImageSymbolConfiguration *c = [UIImageSymbolConfiguration configurationWithPointSize:17 weight:UIImageSymbolWeightMedium];
-    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
-        initWithImage:[UIImage systemImageNamed:@"slider.horizontal.3" withConfiguration:c]
-                style:UIBarButtonItemStylePlain target:self action:@selector(showSettings)];
+    self.navigationItem.rightBarButtonItems = @[
+        [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"slider.horizontal.3" withConfiguration:c]
+                                         style:UIBarButtonItemStylePlain target:self action:@selector(showSettings)],
+        [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"square.on.square" withConfiguration:c]
+                                         style:UIBarButtonItemStylePlain target:self action:@selector(showWebContainers)],
+    ];
 
     [self loadApps];
 }
@@ -112,11 +116,15 @@
     [self.navigationController pushViewController:[HZSettingsViewController new] animated:YES];
 }
 
+- (void)showWebContainers {
+    [self.navigationController pushViewController:[HZWebContainersViewController new] animated:YES];
+}
+
 - (void)loadApps {
     NSMutableArray *out = [NSMutableArray array];
     @try {
         // Resolve LSApplicationWorkspace at runtime (private class) so we don't have to link the
-        // private framework — that avoids an "Undefined symbols" link error.
+        // private framework â€” that avoids an "Undefined symbols" link error.
         Class wsClass = NSClassFromString(@"LSApplicationWorkspace");
         id ws = [wsClass valueForKey:@"defaultWorkspace"];   // +defaultWorkspace
         NSArray *all = [ws valueForKey:@"allApplications"];  // -allApplications
@@ -162,11 +170,11 @@
 - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)s { return self.rows.count; }
 
 - (NSString *)tableView:(UITableView *)tv titleForHeaderInSection:(NSInteger)s {
-    return [NSString stringWithFormat:@"APPLICATIONS · %lu", (unsigned long)self.rows.count];
+    return [NSString stringWithFormat:@"APPLICATIONS Â· %lu", (unsigned long)self.rows.count];
 }
 
 - (NSString *)tableView:(UITableView *)tv titleForFooterInSection:(NSInteger)s {
-    return @"Hold two fingers in any app for the panel.";
+    return @"Hold two fingers in any app for the panel. Web Containers (top right) turns a website into spoofed Home Screen apps.";
 }
 
 - (void)tableView:(UITableView *)tv willDisplayHeaderView:(UIView *)v forSection:(NSInteger)s { HZStyleHeaderFooter(v); }

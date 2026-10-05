@@ -97,6 +97,8 @@ static UIImage *HZFetchTouchIcon(NSString *site) {
 @property (nonatomic, strong) UITextField *prefixField;
 @property (nonatomic, strong) UITextField *countField;
 @property (nonatomic, assign) BOOL creating;
++ (void)confirmResetContainer:(NSDictionary *)c from:(UIViewController *)host onChange:(void (^)(void))onChange;
++ (void)confirmDeleteContainer:(NSDictionary *)c from:(UIViewController *)host onChange:(void (^)(void))onChange;
 @end
 
 @implementation HZWebContainersViewController
@@ -176,26 +178,32 @@ static UIImage *HZFetchTouchIcon(NSString *site) {
     if (name.length) self.prefixField.text = [name capitalizedString];
 }
 
-#pragma mark - Create
+#pragma mark - Alerts (shared with the app list)
 
-- (void)alert:(NSString *)title message:(NSString *)msg {
+static void HZAlert(UIViewController *host, NSString *title, NSString *msg) {
     UIAlertController *a = [UIAlertController alertControllerWithTitle:title message:msg preferredStyle:UIAlertControllerStyleAlert];
     [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];
-    [self presentViewController:a animated:YES completion:nil];
+    [host presentViewController:a animated:YES completion:nil];
 }
 
-- (void)offerRespring:(NSString *)title message:(NSString *)msg {
+static void HZDoRespring(UIViewController *host) {
+    if (!HZRespring()) HZAlert(host, @"Respring failed", @"killall / sbreload not found. Respring from your jailbreak app.");
+}
+
+static void HZOfferRespring(UIViewController *host, NSString *title, NSString *msg) {
     UIAlertController *a = [UIAlertController alertControllerWithTitle:title message:msg preferredStyle:UIAlertControllerStyleAlert];
     [a addAction:[UIAlertAction actionWithTitle:@"Later" style:UIAlertActionStyleCancel handler:nil]];
     [a addAction:[UIAlertAction actionWithTitle:@"Respring" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *x) {
-        [self respring];
+        HZDoRespring(host);
     }]];
-    [self presentViewController:a animated:YES completion:nil];
+    [host presentViewController:a animated:YES completion:nil];
 }
 
-- (void)respring {
-    if (!HZRespring()) [self alert:@"Respring failed" message:@"killall / sbreload not found. Respring from your jailbreak app."];
-}
+#pragma mark - Create
+
+- (void)alert:(NSString *)title message:(NSString *)msg { HZAlert(self, title, msg); }
+- (void)offerRespring:(NSString *)title message:(NSString *)msg { HZOfferRespring(self, title, msg); }
+- (void)respring { HZDoRespring(self); }
 
 - (void)create {
     [self.view endEditing:YES];
@@ -239,50 +247,69 @@ static UIImage *HZFetchTouchIcon(NSString *site) {
 
 #pragma mark - Per-container actions
 
-- (void)showActionsFor:(NSDictionary *)c {
++ (NSString *)statusLineForContainer:(NSDictionary *)c {
+    BOOL iconThere = [HZWebClips iconExistsForContainer:c];
+    BOOL linked = [c[@"stores"] count] > 0;
+    BOOL wipe = [c[@"wipePending"] boolValue];
+    NSString *host = [NSURL URLWithString:c[@"url"]].host ?: c[@"url"];
+    NSString *state = !iconThere ? @"icon removed" : wipe ? @"reset on next open" : linked ? @"spoofed" : @"ready";
+    return [NSString stringWithFormat:@"%@ · seed %@ · %@", host, [HZWebClips seedLabel:c], state];
+}
+
++ (void)presentActionsForContainer:(NSDictionary *)c from:(UIViewController *)host onChange:(void (^)(void))onChange {
     BOOL iconThere = [HZWebClips iconExistsForContainer:c];
     BOOL linked = [c[@"stores"] count] > 0;
     NSString *msg = [NSString stringWithFormat:@"%@\nSeed %@ · %@%@", c[@"url"], [HZWebClips seedLabel:c],
                      linked ? @"opened" : @"not opened yet", iconThere ? @"" : @" · icon removed from Home Screen"];
     UIAlertController *a = [UIAlertController alertControllerWithTitle:c[@"name"] message:msg preferredStyle:UIAlertControllerStyleActionSheet];
     [a addAction:[UIAlertAction actionWithTitle:@"Reset identity & data" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *x) {
-        [self confirmReset:c];
+        [self confirmResetContainer:c from:host onChange:onChange];
     }]];
     [a addAction:[UIAlertAction actionWithTitle:@"Copy seed" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *x) {
         UIPasteboard.generalPasteboard.string = [HZWebClips seedLabel:c];
     }]];
     [a addAction:[UIAlertAction actionWithTitle:@"Delete container" style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *x) {
-        [self confirmDelete:c];
+        [self confirmDeleteContainer:c from:host onChange:onChange];
     }]];
     [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-    a.popoverPresentationController.sourceView = self.view;
-    a.popoverPresentationController.sourceRect = CGRectMake(CGRectGetMidX(self.view.bounds), CGRectGetMidY(self.view.bounds), 1, 1);
-    [self presentViewController:a animated:YES completion:nil];
+    a.popoverPresentationController.sourceView = host.view;
+    a.popoverPresentationController.sourceRect = CGRectMake(CGRectGetMidX(host.view.bounds), CGRectGetMidY(host.view.bounds), 1, 1);
+    [host presentViewController:a animated:YES completion:nil];
 }
 
-- (void)confirmReset:(NSDictionary *)c {
++ (void)confirmResetContainer:(NSDictionary *)c from:(UIViewController *)host onChange:(void (^)(void))onChange {
     UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Reset container?"
         message:[NSString stringWithFormat:@"%@ gets a new fingerprint and all its cookies, logins and site data are erased the next time it opens. Close it in the App Switcher first.", c[@"name"]]
         preferredStyle:UIAlertControllerStyleAlert];
     [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [a addAction:[UIAlertAction actionWithTitle:@"Reset" style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *x) {
         [HZWebClips resetContainer:c[@"id"]];
-        [self reload];
+        if (onChange) onChange();
     }]];
-    [self presentViewController:a animated:YES completion:nil];
+    [host presentViewController:a animated:YES completion:nil];
 }
 
-- (void)confirmDelete:(NSDictionary *)c {
++ (void)confirmDeleteContainer:(NSDictionary *)c from:(UIViewController *)host onChange:(void (^)(void))onChange {
     UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Delete container?"
         message:[NSString stringWithFormat:@"Removes the %@ icon and forgets its identity. Its site data is dropped by iOS once the icon is gone.", c[@"name"]]
         preferredStyle:UIAlertControllerStyleAlert];
     [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [a addAction:[UIAlertAction actionWithTitle:@"Delete" style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *x) {
         [HZWebClips removeContainer:c[@"id"]];
-        [self reload];
-        [self offerRespring:@"Container deleted" message:@"Respring to remove the icon from the Home Screen."];
+        if (onChange) onChange();
+        HZOfferRespring(host, @"Container deleted", @"Respring to remove the icon from the Home Screen.");
     }]];
-    [self presentViewController:a animated:YES completion:nil];
+    [host presentViewController:a animated:YES completion:nil];
+}
+
+- (void)showActionsFor:(NSDictionary *)c {
+    __weak typeof(self) weakSelf = self;
+    [HZWebContainersViewController presentActionsForContainer:c from:self onChange:^{ [weakSelf reload]; }];
+}
+
+- (void)confirmDelete:(NSDictionary *)c {
+    __weak typeof(self) weakSelf = self;
+    [HZWebContainersViewController confirmDeleteContainer:c from:self onChange:^{ [weakSelf reload]; }];
 }
 
 - (void)confirmDeleteAll {
@@ -423,9 +450,7 @@ static UIImage *HZFetchTouchIcon(NSString *site) {
             BOOL linked = [c[@"stores"] count] > 0;
             BOOL wipe = [c[@"wipePending"] boolValue];
             cell.textLabel.text = c[@"name"];
-            NSString *host = [NSURL URLWithString:c[@"url"]].host ?: c[@"url"];
-            NSString *state = !iconThere ? @"icon removed" : wipe ? @"reset on next open" : linked ? @"spoofed" : @"ready";
-            cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ · seed %@ · %@", host, [HZWebClips seedLabel:c], state];
+            cell.detailTextLabel.text = [HZWebContainersViewController statusLineForContainer:c];
             cell.detailTextLabel.textColor = !iconThere ? HZDanger() : (linked || wipe) ? HZAccent() : HZTextMuted();
             cell.imageView.image = [UIImage systemImageNamed:iconThere ? @"app.badge.checkmark" : @"app.dashed"];
             cell.imageView.tintColor = iconThere ? HZAccent() : HZTextMuted();

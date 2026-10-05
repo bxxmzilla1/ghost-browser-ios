@@ -57,6 +57,8 @@
 + (void)removeContainer:(NSString *)cid;
 
 + (BOOL)iconExistsForContainer:(NSDictionary *)c;
+/// Path of the container's Home Screen icon (icon.png inside its web clip bundle), nil if gone.
++ (NSString *)iconPathForContainer:(NSDictionary *)c;
 + (NSString *)seedLabel:(NSDictionary *)c;
 
 @end

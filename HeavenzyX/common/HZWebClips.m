@@ -242,6 +242,12 @@ static NSString *const kHZTagPrefix = @"hzc=";
     return clipId.length && [[NSFileManager defaultManager] fileExistsAtPath:[self bundlePathForClipId:clipId]];
 }
 
++ (NSString *)iconPathForContainer:(NSDictionary *)c {
+    if (![self iconExistsForContainer:c]) return nil;
+    NSString *p = [[self bundlePathForClipId:c[@"clipId"]] stringByAppendingPathComponent:@"icon.png"];
+    return [[NSFileManager defaultManager] fileExistsAtPath:p] ? p : nil;
+}
+
 + (NSString *)seedLabel:(NSDictionary *)c {
     return [NSString stringWithFormat:@"%08X", (unsigned)[c[@"seed"] unsignedIntValue]];
 }

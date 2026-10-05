@@ -57,6 +57,7 @@
 @interface HZAppListViewController () <UISearchResultsUpdating>
 @property (nonatomic, strong) NSArray<NSDictionary *> *apps;   // {@"id", @"name"}
 @property (nonatomic, strong) NSArray<NSDictionary *> *filtered;
+@property (nonatomic, strong) NSArray<NSDictionary *> *containers;   // Web Containers (HZWebClips)
 @property (nonatomic, strong) UISearchController *search;
 @end
 
@@ -96,9 +97,20 @@
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
+    [self reloadContainers];       // containers created / reset / deleted on the Web Containers screen
     [self refreshHeader];
     [self.tableView reloadData];   // reflect enable/identity changes made in the detail screen
 }
+
+- (void)reloadContainers {
+    self.containers = [HZWebClips containers];
+    [self refreshHeader];
+    [self.tableView reloadData];
+}
+
+/// Web containers get their own section unless the user is searching.
+- (BOOL)showsContainers { return self.containers.count > 0 && self.search.searchBar.text.length == 0; }
+- (NSInteger)appsSection { return self.showsContainers ? 1 : 0; }
 
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
@@ -107,7 +119,8 @@
 
 - (void)refreshHeader {
     NSUInteger on = 0;
-    for (NSDictionary *a in self.apps) if ([HZConfig isEnabledForApp:a[@"id"]] || [HZWebClips containerForBundleId:a[@"id"]]) on++;
+    for (NSDictionary *a in self.apps) if ([HZConfig isEnabledForApp:a[@"id"]]) on++;
+    on += self.containers.count;   // every web container is spoofed by the tweak
     UIView *pill = HZPill(on ? [NSString stringWithFormat:@"%lu spoofed", (unsigned long)on] : @"0 spoofed",
                           on ? HZSuccess() : HZTextMuted());
     self.tableView.tableHeaderView = HZCompactHeader(self.tableView.bounds.size.width, HZLogo(), @"Heavenzy", pill);
@@ -134,6 +147,9 @@
             if (![type isEqualToString:@"User"]) continue;                      // third-party only
             NSString *bid = [p valueForKey:@"applicationIdentifier"];
             if (bid.length == 0 || [bid isEqualToString:@"com.heavenzy.app"]) continue;
+            // Web Push placeholders iOS registers for Home Screen web apps (created on first open,
+            // left behind after the icon is deleted). Not apps; containers have their own section.
+            if ([bid hasPrefix:@"com.apple.WebKit.PushBundle."]) continue;
             NSString *name = [p valueForKey:@"localizedName"];
             if (name.length == 0) name = bid;
             [out addObject:@{ @"id": bid, @"name": name }];
@@ -144,8 +160,7 @@
     }];
     self.apps = out;
     self.filtered = out;
-    [self refreshHeader];
-    [self.tableView reloadData];
+    [self reloadContainers];
 }
 
 - (NSArray<NSDictionary *> *)rows { return self.filtered ?: self.apps; }
@@ -167,14 +182,19 @@
 
 #pragma mark - Table
 
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tv { return 1; }
-- (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)s { return self.rows.count; }
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tv { return self.showsContainers ? 2 : 1; }
+
+- (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)s {
+    return s == self.appsSection ? self.rows.count : self.containers.count;
+}
 
 - (NSString *)tableView:(UITableView *)tv titleForHeaderInSection:(NSInteger)s {
+    if (s != self.appsSection) return [NSString stringWithFormat:@"WEB CONTAINERS · %lu", (unsigned long)self.containers.count];
     return [NSString stringWithFormat:@"APPLICATIONS · %lu", (unsigned long)self.rows.count];
 }
 
 - (NSString *)tableView:(UITableView *)tv titleForFooterInSection:(NSInteger)s {
+    if (s != self.appsSection) return @"Home Screen web apps made by Heavenzy. Each has its own storage and web identity; tap one to reset or delete it.";
     return @"Hold two fingers in any app for the panel. Web Containers (top right) turns a website into spoofed Home Screen apps.";
 }
 
@@ -183,6 +203,18 @@
 
 - (UITableViewCell *)tableView:(UITableView *)tv cellForRowAtIndexPath:(NSIndexPath *)ip {
     HZAppCell *cell = [tv dequeueReusableCellWithIdentifier:@"app" forIndexPath:ip];
+
+    if (ip.section != self.appsSection) {
+        NSDictionary *c = self.containers[ip.row];
+        NSString *iconPath = [HZWebClips iconPathForContainer:c];
+        UIImage *icon = iconPath ? [UIImage imageWithContentsOfFile:iconPath] : nil;
+        cell.icon.image = icon ?: [[UIImage systemImageNamed:@"app.dashed"] imageWithTintColor:HZTextMuted() renderingMode:UIImageRenderingModeAlwaysOriginal];
+        cell.name.text = c[@"name"];
+        cell.subtitle.text = [HZWebContainersViewController statusLineForContainer:c];
+        cell.subtitle.textColor = [HZWebClips iconExistsForContainer:c] ? HZAccent() : HZDanger();
+        return cell;
+    }
+
     NSDictionary *app = self.rows[ip.row];
     NSString *bid = app[@"id"];
     BOOL enabled = [HZConfig isEnabledForApp:bid];
@@ -190,20 +222,6 @@
 
     cell.icon.image = HZAppIcon(bid);
     cell.name.text = app[@"name"];
-
-    // Home Screen web apps made by Web Containers register as apps on newer iOS; they are always
-    // spoofed by the tweak (no Spoof Chain needed — running it just resets the container).
-    NSDictionary *container = [HZWebClips containerForBundleId:bid];
-    if (container) {
-        BOOL opened = [container[@"stores"] count] > 0;
-        BOOL wipe = [container[@"wipePending"] boolValue];
-        cell.name.text = container[@"name"];
-        cell.subtitle.text = [NSString stringWithFormat:@"Web container · seed %@ · %@", [HZWebClips seedLabel:container],
-                              wipe ? @"reset on next open" : opened ? @"spoofed" : @"ready"];
-        cell.subtitle.textColor = HZAccent();
-        return cell;
-    }
-
     cell.subtitle.text = enabled ? (identity ? HZIdentitySummary(identity) : @"Spoofing on") : bid;
     cell.subtitle.textColor = enabled ? HZAccent() : HZTextMuted();
     return cell;
@@ -211,6 +229,12 @@
 
 - (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)ip {
     [tv deselectRowAtIndexPath:ip animated:YES];
+    if (ip.section != self.appsSection) {
+        __weak typeof(self) weakSelf = self;
+        [HZWebContainersViewController presentActionsForContainer:self.containers[ip.row] from:self
+                                                         onChange:^{ [weakSelf reloadContainers]; }];
+        return;
+    }
     NSDictionary *app = self.rows[ip.row];
     HZAppDetailViewController *d = [[HZAppDetailViewController alloc] initWithBundleId:app[@"id"] name:app[@"name"]];
     [self.navigationController pushViewController:d animated:YES];

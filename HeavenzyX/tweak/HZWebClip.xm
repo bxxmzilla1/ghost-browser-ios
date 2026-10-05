@@ -15,12 +15,12 @@
 // loads sees the same per-container canvas / audio fingerprint, LAN-free WebRTC and re-encoded uploads.
 //
 // Which container we are in (see %ctor):
-//   1. Newer iOS registers each Home Screen web app as its own application whose bundle identifier
-//      ends with the web clip's identifier ("com.apple.WebKit.…<clipId>") — a direct, reliable match
-//      that also makes the container show up in the control app's app list.
-//   2. Older iOS hosts all web apps in one process (com.apple.webapp); there the "#hzc=<id>" tag the
-//      control app bakes into the icon's URL identifies the container on its first loadRequest: (it is
-//      stripped before the page sees it) and the view's data store is linked for later launches.
+//   1. If this process's bundle identifier embeds one of our web clip identifiers (iOS 16.4+ registers
+//      a "com.apple.WebKit.PushBundle.<clipId>" record per Home Screen web app), bind the whole process
+//      to that container — direct and reliable.
+//   2. Otherwise we are in the shared web-app host (com.apple.webapp): the "#hzc=<id>" tag the control
+//      app bakes into the icon's URL identifies the container on its first loadRequest: (it is stripped
+//      before the page sees it) and the view's data store is linked for later launches.
 //
 // Only Objective-C method swizzles — same rule as Tweak.xm, no inline C hooks.
 
